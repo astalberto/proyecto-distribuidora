@@ -1,4 +1,4 @@
-<img width="657" height="321" alt="image" src="https://github.com/user-attachments/assets/8bc53c65-f13a-481e-8fb9-60a457c66be4" />Link de replit
+Link del replit
 
 https://isber-distribution-hub--josuexpardoch.replit.app/
 
