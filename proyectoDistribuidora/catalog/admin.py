@@ -4,7 +4,7 @@ from .models import Product, Store, VendorInventory
 
 class StoreAdmin(admin.ModelAdmin):
     list_display = ('name', )
-    search_fields = ('name', 'address') 
+    search_fields = ('name', 'address', 'phone_number', 'distributor__name') 
 admin.site.register(Store, StoreAdmin)  
 
 class ProductAdmin(admin.ModelAdmin):

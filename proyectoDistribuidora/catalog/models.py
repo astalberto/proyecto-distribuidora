@@ -4,7 +4,17 @@ from accounts.models import Distributor, User
 
 class Store(models.Model):
     name = models.CharField(max_length=255)
+    
+    address = models.CharField(
+        max_length=255,
+        blank=True
+    )
 
+    phone_number = models.CharField(
+        max_length=20,
+        blank=True
+    )
+    
     distributor = models.ForeignKey(
         Distributor,
         on_delete=models.CASCADE,

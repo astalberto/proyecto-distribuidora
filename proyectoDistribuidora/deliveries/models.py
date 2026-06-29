@@ -23,4 +23,4 @@ class DeliveryConfirmation(models.Model):
     confirmed_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"Delivery for Order {self.order.id}"
+        return f"{self.timestamp} - {self.action} - {self.entity_type}"

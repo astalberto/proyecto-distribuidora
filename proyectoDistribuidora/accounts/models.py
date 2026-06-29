@@ -1,5 +1,5 @@
 from django.db import models
-
+from django.contrib.auth.models import AbstractUser
 
 class Role(models.TextChoices):
     DISTRIBUTOR = "DISTRIBUTOR", "Distributor"
