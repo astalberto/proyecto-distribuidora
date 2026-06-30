@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><title>Distribuidor - {{ distribuidor.name }}</title></head>
+<body>
+<h1>{{ distribuidor.name }}</h1>
+<p><b>Email:</b> {{ distribuidor.email }}</p>
+<a href="{% url 'editar_distribuidor' distribuidor.id %}">Editar</a> |
+<a href="{% url 'index_accounts' %}">Volver</a>
+
+<h2>Usuarios</h2>
+{% for u in usuarios %}
+<p>
+  {{ u.email }} | Rol: {{ u.role }} |
+  <a href="{% url 'editar_usuario' u.id %}">Editar</a> |
+  <a href="{% url 'eliminar_usuario' u.id %}" onclick="return confirm('¿Eliminar usuario {{ u.email }}?')">Eliminar</a>
+</p>
+{% empty %}
+<p>Sin usuarios para este distribuidor.</p>
+{% endfor %}
+</body>
+</html>

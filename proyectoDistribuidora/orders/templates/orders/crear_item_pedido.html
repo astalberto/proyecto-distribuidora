@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Agregar Item al Pedido</title></head>
+<body>
+<h1>Agregar Item al Pedido #{{ pedido.id }}</h1>
+<p>Tienda: {{ pedido.store }} | Vendedor: {{ pedido.vendor }} | Estado: {{ pedido.status }}</p>
+<form action="" method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p><input type="submit" value="Guardar"></p>
+</form>
+<a href="{% url 'ver_pedido' pedido.id %}">Cancelar</a>
+</body>
+</html>

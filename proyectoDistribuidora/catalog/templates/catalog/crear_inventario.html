@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Agregar Inventario</title></head>
+<body>
+<h1>Agregar Inventario para: {{ vendor.email }}</h1>
+<p>Vendedor: <b>{{ vendor.email }}</b> ({{ vendor.role }})</p>
+<form action="" method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p><input type="submit" value="Guardar"></p>
+</form>
+<a href="{% url 'index_catalog' %}">Cancelar</a>
+</body>
+</html>

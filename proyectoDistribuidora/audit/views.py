@@ -1,3 +1,7 @@
 from django.shortcuts import render
+from .models import AuditLog
 
-# Create your views here.
+
+def index(request):
+    logs = AuditLog.objects.all().order_by('-timestamp')
+    return render(request, 'audit/index.html', {'logs': logs})

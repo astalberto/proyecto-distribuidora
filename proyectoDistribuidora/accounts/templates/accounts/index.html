@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><title>Accounts - Inicio</title></head>
+<body>
+<h1>Distribuidores</h1>
+<a href="{% url 'crear_distribuidor' %}">+ Crear Distribuidor</a> |
+<a href="{% url 'crear_usuario' %}">+ Crear Usuario</a>
+<hr>
+{% for d in distribuidores %}
+<h2>{{ d.name }} &lt;{{ d.email }}&gt;</h2>
+<a href="{% url 'obtener_distribuidor' d.id %}">Ver</a> |
+<a href="{% url 'editar_distribuidor' d.id %}">Editar</a> |
+<a href="{% url 'eliminar_distribuidor' d.id %}" onclick="return confirm('¿Eliminar distribuidor {{ d.name }}?')">Eliminar</a>
+
+<h3>Usuarios</h3>
+{% for u in d.users.all %}
+<p>
+  &nbsp;&nbsp;{{ u.email }} ({{ u.role }}) |
+  <a href="{% url 'editar_usuario' u.id %}">Editar</a> |
+  <a href="{% url 'eliminar_usuario' u.id %}" onclick="return confirm('¿Eliminar usuario {{ u.email }}?')">Eliminar</a>
+</p>
+{% empty %}
+<p>&nbsp;&nbsp;Sin usuarios.</p>
+{% endfor %}
+<hr>
+{% empty %}
+<p>No hay distribuidores registrados.</p>
+{% endfor %}
+</body>
+</html>

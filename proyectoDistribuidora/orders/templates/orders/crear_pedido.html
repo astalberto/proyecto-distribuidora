@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head><title>Crear Pedido</title></head>
+<body>
+<h1>Crear Pedido</h1>
+<form action="" method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p><input type="submit" value="Guardar"></p>
+</form>
+<a href="{% url 'index_orders' %}">Cancelar</a>
+</body>
+</html>

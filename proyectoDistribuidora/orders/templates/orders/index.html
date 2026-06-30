@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head><title>Pedidos</title></head>
+<body>
+<h1>Pedidos</h1>
+<a href="{% url 'crear_pedido' %}">+ Crear Pedido</a>
+<br><br>
+<table border="1" cellpadding="4">
+<tr><th>ID</th><th>Tienda</th><th>Vendedor</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr>
+{% for p in pedidos %}
+<tr>
+  <td>{{ p.id }}</td>
+  <td>{{ p.store }}</td>
+  <td>{{ p.vendor }}</td>
+  <td>{{ p.status }}</td>
+  <td>{{ p.created_at }}</td>
+  <td>
+    <a href="{% url 'ver_pedido' p.id %}">Ver Items</a> |
+    <a href="{% url 'editar_pedido' p.id %}">Editar</a> |
+    <a href="{% url 'eliminar_pedido' p.id %}" onclick="return confirm('¿Eliminar pedido #{{ p.id }}?')">Eliminar</a>
+  </td>
+</tr>
+{% empty %}
+<tr><td colspan="6">No hay pedidos.</td></tr>
+{% endfor %}
+</table>
+</body>
+</html>

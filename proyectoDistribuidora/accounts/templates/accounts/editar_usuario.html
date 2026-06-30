@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head><title>Editar Usuario</title></head>
+<body>
+<h1>Editar Usuario: {{ usuario.email }}</h1>
+<form action="" method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p><input type="submit" value="Actualizar"></p>
+</form>
+<a href="{% url 'index_accounts' %}">Cancelar</a>
+</body>
+</html>

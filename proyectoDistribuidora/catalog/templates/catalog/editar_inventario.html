@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head><title>Editar Inventario</title></head>
+<body>
+<h1>Editar Inventario: {{ inventario.vendor }} - {{ inventario.product }}</h1>
+<form action="" method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p><input type="submit" value="Actualizar"></p>
+</form>
+<a href="{% url 'index_catalog' %}">Cancelar</a>
+</body>
+</html>
