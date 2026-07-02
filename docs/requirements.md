@@ -59,14 +59,19 @@ erDiagram
     Store {
         string id PK
         string name
+        string address
+        string phoneNumber
         string distributorId FK
         string ownerId FK
+        string vendorId FK "nullable — default vendor; auto-populates Order.vendor (DR-01)"
     }
     Product {
         string id PK
         string name
         string description
         decimal unitPrice
+        boolean isActive "DR-06: soft-delete flag"
+        int lowStockThreshold "DR-05: default 5; alert trigger for distributor dashboard"
         string distributorId FK
     }
     VendorInventory {
@@ -79,6 +84,7 @@ erDiagram
         string storeId FK
         string vendorId FK
         OrderStatus status
+        string rejectionReason "optional — set by vendor when REJECTED"
         string previousOrderId FK "nullable — links resubmissions to their rejected predecessor"
         datetime createdAt
         datetime updatedAt
@@ -110,20 +116,33 @@ erDiagram
         string action
         string entityType
         string entityId
+        string previousStatus "DR-04: blank for non-transition events"
+        string newStatus "DR-04: blank for non-transition events"
         datetime timestamp
         json details
+    }
+    Notification {
+        string id PK
+        string userId FK
+        string orderId FK "nullable"
+        string message
+        boolean isRead
+        datetime createdAt
     }
 
     Distributor ||--o{ User : "has"
     Distributor ||--o{ Store : "owns"
     Distributor ||--o{ Product : "manages"
     User ||--o{ Store : "owns (STORE_OWNER)"
+    User ||--o| Store : "assigned to (VENDOR)"
     User ||--o{ Order : "processes (VENDOR)"
     User ||--o{ DeliveryConfirmation : "submits (DELIVERY)"
     User ||--o{ AuditLog : "generates"
     User ||--o{ PasswordResetToken : "requests"
+    User ||--o{ Notification : "receives"
     Store ||--o{ Order : "places"
     Order ||--o{ OrderItem : "contains"
+    Order ||--o{ Notification : "triggers"
     Product ||--o{ OrderItem : "appears in"
     Product ||--o{ VendorInventory : "stocked in"
     Order ||--o| DeliveryConfirmation : "confirmed by"
@@ -136,6 +155,60 @@ erDiagram
 PENDING → ACCEPTED → DISPATCHED → DELIVERED
 PENDING → REJECTED → (new Order with previousOrderId pointing back)
 ```
+
+---
+
+## Design Decisions (Gap Resolutions)
+
+Resolved before prototype design. Each decision closes a gap identified in the BA review.
+
+### DR-01 — Vendor-to-Store Assignment
+
+**Gap:** No mechanism assigned a vendor to an order at creation time (`Order.vendor` was non-nullable but unpopulated).
+
+**Decision:** Each `Store` has a nullable `vendor FK`. The distributor sets this when creating or editing a store. When a store owner places an order, `Order.vendor` is auto-populated from `store.vendor`; no vendor selection step exists in the order flow.
+
+**Edge case:** If a store has no vendor assigned, the Place Order action is blocked and the store owner sees: *"Tu tienda no tiene un vendedor asignado. Contacta al distribuidor."*
+
+---
+
+### DR-02 — Delivery Order Visibility
+
+**Gap:** No per-delivery-person assignment mechanism existed; "assigned to their route" was undefined.
+
+**Decision:** For MVP, all `DELIVERY` users within the same distributor see all `DISPATCHED` orders. They self-select on a first-come, first-served basis. `DeliveryConfirmation.delivery_user` records who confirmed. Route/zone assignment is post-MVP (see Out of Scope).
+
+---
+
+### DR-03 — In-App Notifications
+
+**Gap:** `STORE_OWNER` notifications (US-12, US-13, US-16) had no model or delivery mechanism.
+
+**Decision:** A `Notification` model is added (fields: `user FK`, `order FK nullable`, `message`, `is_read`, `created_at`). Notifications are written server-side on every order status transition. Store owners see their unread count on page load — no real-time polling for store owners in MVP. Vendor 30-second polling is unchanged.
+
+---
+
+### DR-04 — AuditLog Typed Status Fields
+
+**Gap:** `AuditLog` stored everything in `details JSONField`; FR-09.1 requires queryable `previous_status` / `new_status`.
+
+**Decision:** Two `CharField` columns (`previous_status`, `new_status`) are added to `AuditLog`. They are blank for non-transition events (e.g., catalog changes). The `details` field is retained for additional context (quantities, before/after values).
+
+---
+
+### DR-05 — Low-Stock Threshold
+
+**Gap:** US-21 required a configurable threshold per product; no field or UI story existed for it.
+
+**Decision:** `low_stock_threshold` (PositiveIntegerField, default 5) is added to `Product`. The distributor configures it from the product edit form (US-25). The distributor dashboard alerts when any `VendorInventory.quantity < product.low_stock_threshold`.
+
+---
+
+### DR-06 — Product Soft-Delete
+
+**Gap:** US-06 required deactivation; `eliminar_producto` performed a hard delete that would cascade to `OrderItem`.
+
+**Decision:** `Product` gains `is_active BooleanField (default=True)`. The delete action now sets `is_active=False`; hard deletes are blocked at the application layer. Deactivated products can be reactivated (new `reactivar_producto` view). A deactivated product's `VendorInventory` rows are preserved but hidden from the order placement form. Vendors may still accept pending orders referencing a deactivated product because the stock check uses the `VendorInventory` record, not the `is_active` flag.
 
 ---
 
@@ -575,6 +648,17 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 ### Epic 2 — Distributor: Product Catalog
 
+**US-24** — Gestionar usuarios de la plataforma  
+*As a DISTRIBUTOR, I want to create users and assign them roles so that vendors, store owners, and delivery personnel can access the system.*  
+**Priority:** M | **Related:** UC-08, FR-02.1  
+**Acceptance Criteria:**
+- [ ] Distributor can create a user with: email, password, role (VENDOR / STORE_OWNER / DELIVERY), and distributor scoping.
+- [ ] Distributor can edit a user's role and active status.
+- [ ] A user created by Distributor A is invisible to Distributor B.
+- [ ] The distributor cannot create another DISTRIBUTOR-role user.
+
+---
+
 **US-04** — Crear producto  
 *As a DISTRIBUTOR, I want to add a new product to the catalog so that vendors can sell it to stores.*  
 **Priority:** M | **Related:** UC-04, FR-03.1  
@@ -594,12 +678,14 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 ---
 
-**US-06** — Desactivar producto  
-*As a DISTRIBUTOR, I want to deactivate a product so that vendors can no longer place new orders for it without affecting orders already in progress.*  
-**Priority:** S | **Related:** UC-04, FR-03.3  
+**US-06** — Desactivar / reactivar producto  
+*As a DISTRIBUTOR, I want to deactivate a product so that vendors can no longer place new orders for it, and reactivate it when it becomes available again.*  
+**Priority:** S | **Related:** UC-04, FR-03.3, DR-06  
 **Acceptance Criteria:**
-- [ ] Deactivated product no longer appears in the vendor's available inventory.
-- [ ] Orders that already contain the product are unaffected.
+- [ ] Deactivated product (`is_active=False`) no longer appears in the vendor's available inventory or the order placement form.
+- [ ] Orders that already contain the product are unaffected; vendors may still accept pending orders for it.
+- [ ] A reactivate action restores `is_active=True`; the product reappears in the vendor inventory view.
+- [ ] No product is ever hard-deleted from the database through the UI.
 
 ---
 
@@ -663,8 +749,10 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 **Priority:** M | **Related:** UC-12, FR-06.2, FR-06.4  
 **Acceptance Criteria:**
 - [ ] A confirmation dialog appears before the rejection is committed.
+- [ ] Vendor may optionally enter a `rejection_reason` (max 500 chars) before confirming.
 - [ ] Order transitions to REJECTED; inventory is not affected.
-- [ ] Store owner receives an in-app notification of the rejection.
+- [ ] A `Notification` is created for the store owner including the rejection reason if provided.
+- [ ] An `AuditLog` entry records `previous_status=PENDING`, `new_status=REJECTED`.
 
 ---
 
@@ -682,9 +770,11 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 **US-14** — Realizar un pedido  
 *As a STORE_OWNER, I want to place an order by selecting products and quantities so that I can restock my store without calling or visiting the distributor.*  
-**Priority:** M | **Related:** UC-14, FR-05.1, FR-05.3, FR-05.4  
+**Priority:** M | **Related:** UC-14, FR-05.1, FR-05.3, FR-05.4, DR-01  
 **Acceptance Criteria:**
-- [ ] Order flow completes in 3 steps or fewer from the main screen.
+- [ ] Order flow completes in 3 steps or fewer: ① Select products + quantities → ② Review → ③ Confirm.
+- [ ] If the store owner belongs to multiple stores, step 0 asks them to select which store they are ordering for.
+- [ ] If the store has no vendor assigned, the "Nuevo Pedido" button is disabled with a message: *"Tu tienda no tiene un vendedor asignado."*
 - [ ] If a product is unavailable, a clear per-item error is shown and no order is created.
 - [ ] The price recorded on each item matches the catalog price at the time of submission.
 - [ ] All interactive elements meet 48 × 48 px minimum tap target size.
@@ -702,10 +792,35 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 **US-16** — Recibir notificaciones de cambio de estado  
 *As a STORE_OWNER, I want to see in-app notifications when my order status changes so that I'm informed without having to check manually.*  
-**Priority:** S | **Related:** FR-10.2–FR-10.4  
+**Priority:** S | **Related:** FR-10.2–FR-10.4, DR-03  
 **Acceptance Criteria:**
 - [ ] Notification appears when order transitions to ACCEPTED, REJECTED, DISPATCHED, or DELIVERED.
 - [ ] Notification identifies the order by a readable reference (e.g., order number + store name).
+- [ ] Unread notification count is visible on the store owner's dashboard on every page load.
+- [ ] Store owner can mark notifications as read.
+
+---
+
+**US-22** — Reenviar pedido rechazado  
+*As a STORE_OWNER, I want to resubmit a rejected order so that the vendor gets a second attempt to fulfil it.*  
+**Priority:** S | **Related:** UC-12, Order state machine (`previousOrderId`)  
+**Acceptance Criteria:**
+- [ ] From a REJECTED order's detail view, a "Reenviar pedido" button creates a new Order with `previous_order` pointing to the rejected one.
+- [ ] The new order starts in PENDING status with the same items and current catalog prices.
+- [ ] The original rejected order is unchanged and remains visible in the order history.
+- [ ] If the vendor has since been reassigned on the store, the new order goes to the current vendor.
+
+---
+
+**US-23** — Cancelar pedido pendiente  
+*As a STORE_OWNER, I want to cancel an order before the vendor acts on it so that I can correct mistakes.*  
+**Priority:** S | **Related:** FR-05  
+**Acceptance Criteria:**
+- [ ] A "Cancelar pedido" action is available only while the order is in PENDING status.
+- [ ] A confirmation dialog appears before cancellation is committed.
+- [ ] The order transitions to REJECTED with `rejection_reason = "Cancelado por el propietario de la tienda"`.
+- [ ] Inventory is not affected (no deduction had occurred).
+- [ ] An AuditLog entry records the cancellation with `previous_status=PENDING`, `new_status=REJECTED`.
 
 ---
 
@@ -752,6 +867,16 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 ---
 
+**US-25** — Configurar umbral de stock bajo  
+*As a DISTRIBUTOR, I want to set a minimum stock threshold per product so that the dashboard alerts me before orders fail.*  
+**Priority:** S | **Related:** US-21, FR-04.5, DR-05  
+**Acceptance Criteria:**
+- [ ] Distributor can set `low_stock_threshold` (integer ≥ 0) on the product create/edit form.
+- [ ] Default value is 5 units.
+- [ ] Threshold change takes effect on the next dashboard page load.
+
+---
+
 **US-21** — Alerta de stock bajo  
 *As a DISTRIBUTOR, I want a visual alert when a vendor's product stock drops below a threshold so that I can restock before an order is rejected due to lack of inventory.*  
 **Priority:** S | **Related:** FR-04.5  
@@ -794,7 +919,7 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 |----|----------|-------------|
 | FR-03.1 | **M** | The distributor must be able to create a product with: name, description, unit price, and an initial stock quantity. |
 | FR-03.2 | **M** | The distributor must be able to update a product's name, description, and unit price. |
-| FR-03.3 | **S** | The distributor must be able to deactivate (soft-delete) a product; active orders referencing it must not be affected. |
+| FR-03.3 | **S** | The distributor must be able to deactivate (soft-delete) a product and subsequently reactivate it; active orders referencing it must not be affected. No product may be hard-deleted through the UI. |
 | FR-03.4 | **M** | The distributor must be able to view the full product catalog with current prices. |
 | FR-03.5 | **M** | The distributor must be able to assign stock quantities to a specific vendor, creating or updating the corresponding `VendorInventory` record. |
 
@@ -1065,28 +1190,33 @@ The backlog is ordered by sprint target. Items are identified by requirement ID 
 | Login / Logout views | FR-01.1, FR-01.2, FR-01.5 | **M** | A | 1 |
 | `@role_required` decorator + route protection | FR-02.3, FR-02.4, FR-02.5 | **M** | A | 1 |
 | Password reset flow (Django SMTP + Resend) | FR-01.3, FR-01.4, FR-01.6 | **M** | B | 1 |
-| Distributor + Store models with `distributor` FK | FR-02.5 | **M** | A | 2 |
-| Product CRUD (distributor only) | FR-03.1–FR-03.4 | **M** | A | 2 |
+| User management CRUD for DISTRIBUTOR (US-24) | FR-02.1, US-24 | **M** | B | 1 |
+| Distributor + Store models with `distributor` FK + `vendor` FK (DR-01) | FR-02.5, DR-01 | **M** | A | 2 |
+| Product CRUD with `is_active` + `low_stock_threshold` (DR-05, DR-06) | FR-03.1–FR-03.4, DR-05, DR-06 | **M** | A | 2 |
+| Product soft-delete + reactivate actions | FR-03.3, US-06 | **S** | A | 2 |
 | VendorInventory assignment | FR-03.5, FR-04.1, FR-04.2 | **M** | A | 2 |
 | Cloudinary upload preset + `public_id` validation | FR-07.3, FR-07.5 | **M** | B | 2 |
-| Order creation with price snapshot (`unit_price_at_time`) | FR-05.1, FR-05.4 | **M** | A | 3 |
+| Order creation with price snapshot + vendor auto-assign from store (DR-01) | FR-05.1, FR-05.4, DR-01 | **M** | A | 3 |
+| Store-selection step when store owner has multiple stores (US-14) | US-14 | **M** | A | 3 |
 | Product availability validation at submit time | FR-05.3 | **M** | A | 3 |
 | Vendor order queue view (pending orders) | FR-06.1 | **M** | A | 3 |
 | Order accept with `transaction.atomic()` + `select_for_update()` | FR-04.3, FR-04.4, FR-06.2–FR-06.4 | **M** | A | 3 |
-| Order reject + dispatch transitions | FR-06.4, FR-06.5 | **M** | A | 3 |
+| Order reject (with optional `rejection_reason`) + dispatch transitions | FR-06.4, FR-06.5, US-12 | **M** | A | 3 |
 | JS polling module (30 s, vendor dashboard) | FR-06.6, FR-10.1 | **M** | B | 3 |
 | Store owner order status view | FR-05.5 | **M** | B | 3 |
 | Delivery confirmation view + photo upload | FR-07.1, FR-07.2, FR-07.4 | **M** | A | 4 |
-| Audit log on every order status transition | FR-09.1, FR-09.2, FR-09.5 | **M** | B | 4 |
+| Audit log on every order status transition (`previous_status`, `new_status`) | FR-09.1, FR-09.2, FR-09.5, DR-04 | **M** | B | 4 |
 | Distributor operations dashboard (orders + inventory) | FR-08.1, FR-08.3 | **M** | B | 4 |
 | DB indexes on `Order(vendor, status)` and `Order(store)` | NFR-02.6 | **M** | B | 4 |
 | N+1 prevention with `select_related` on all list views | NFR-02.5 | **M** | A | 4 |
-| In-app status notifications for store owner | FR-10.2–FR-10.4 | **S** | B | 5 |
+| `Notification` model + page-load unread count for store owner (DR-03) | FR-10.2–FR-10.4, DR-03 | **S** | B | 5 |
+| Store owner: mark notification as read | US-16 | **S** | B | 5 |
+| Store owner: cancel pending order (US-23) | US-23 | **S** | A | 5 |
+| Store owner: resubmit rejected order (US-22) | US-22 | **S** | A | 5 |
 | Dashboard filters (date, vendor, store, status) | FR-08.2 | **S** | A | 5 |
 | Summary metrics (total orders, fulfilled, rejected) | FR-08.4 | **S** | A | 5 |
 | Audit log for catalog changes and failed accepts | FR-09.3, FR-09.4 | **S** | B | 5 |
-| Low-stock alert for distributor | FR-04.5 | **S** | B | 5 |
-| Product soft-delete | FR-03.3 | **S** | A | 5 |
+| Low-stock alert on distributor dashboard (`low_stock_threshold`) | FR-04.5, US-21, US-25 | **S** | B | 5 |
 | Unit tests: order state transitions, price snapshot, reset token | TR-01.1–TR-01.3 | **S** | Both | 6 |
 | Integration tests: atomic accept, rollback, tenant isolation | TR-02.1–TR-02.3 | **M** | Both | 6 |
 | E2E tests: 4 critical paths + error + security paths | TR-03.1–TR-03.6 | **M** | Both | 6 |

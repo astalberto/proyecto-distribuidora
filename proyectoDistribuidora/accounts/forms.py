@@ -1,4 +1,6 @@
 from django import forms
+from django.contrib.auth.forms import UserCreationForm
+
 from .models import Distributor, User
 
 
@@ -8,7 +10,13 @@ class DistributorForm(forms.ModelForm):
         fields = ['name', 'email']
 
 
-class UserForm(forms.ModelForm):
+class UserCreateForm(UserCreationForm):
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ['email', 'role', 'distributor']
+
+
+class UserEditForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ['email', 'password_hash', 'role', 'distributor']
+        fields = ['email', 'role', 'distributor', 'is_active']

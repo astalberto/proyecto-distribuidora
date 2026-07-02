@@ -1,12 +1,14 @@
 from django.shortcuts import render, redirect
 from .models import Distributor, User
-from .forms import DistributorForm, UserForm
+from .forms import DistributorForm, UserCreateForm, UserEditForm
 
 
 def index(request):
     distribuidores = Distributor.objects.all()
     return render(request, 'accounts/index.html', {'distribuidores': distribuidores})
 
+
+# --- Distributor ---
 
 def crear_distribuidor(request):
     if request.method == 'POST':
@@ -48,26 +50,28 @@ def eliminar_distribuidor(request, id):
     return redirect(index)
 
 
+# --- User ---
+
 def crear_usuario(request):
     if request.method == 'POST':
-        formulario = UserForm(request.POST)
+        formulario = UserCreateForm(request.POST)
         if formulario.is_valid():
             formulario.save()
             return redirect(index)
     else:
-        formulario = UserForm()
+        formulario = UserCreateForm()
     return render(request, 'accounts/crear_usuario.html', {'formulario': formulario})
 
 
 def editar_usuario(request, id):
     usuario = User.objects.get(id=id)
     if request.method == 'POST':
-        formulario = UserForm(request.POST, instance=usuario)
+        formulario = UserEditForm(request.POST, instance=usuario)
         if formulario.is_valid():
             formulario.save()
             return redirect(index)
     else:
-        formulario = UserForm(instance=usuario)
+        formulario = UserEditForm(instance=usuario)
     return render(request, 'accounts/editar_usuario.html', {
         'formulario': formulario,
         'usuario': usuario,

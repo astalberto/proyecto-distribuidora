@@ -1,16 +1,40 @@
 from django.contrib import admin
-from .models import *
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+
+from .models import Distributor, User, PasswordResetToken, Notification
+
 
 class DistribuidorAdmin(admin.ModelAdmin):
     list_display = ('name', 'email')
-    search_fields = ('name', 'email')   
+    search_fields = ('name', 'email')
 
 admin.site.register(Distributor, DistribuidorAdmin)
 
-class UserAdmin(admin.ModelAdmin):
-    list_display = ('email', 'role', 'distributor')
+
+class UserAdmin(BaseUserAdmin):
+    list_display = ('email', 'role', 'distributor', 'is_staff', 'is_active')
+    list_filter = ('role', 'is_staff', 'is_active')
     search_fields = ('email',)
-    list_filter = ('role',)
-    
+    ordering = ('email',)
+    fieldsets = BaseUserAdmin.fieldsets + (
+        ('Rol y Distribuidor', {'fields': ('role', 'distributor')}),
+    )
+    add_fieldsets = BaseUserAdmin.add_fieldsets + (
+        ('Rol y Distribuidor', {'fields': ('role', 'distributor')}),
+    )
+
 admin.site.register(User, UserAdmin)
-# Register your models here.
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'expires_at', 'used_at')
+    search_fields = ('user__email',)
+    list_filter = ('expires_at',)
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('user', 'order', 'message', 'is_read', 'created_at')
+    list_filter = ('is_read',)
+    search_fields = ('user__email', 'message')

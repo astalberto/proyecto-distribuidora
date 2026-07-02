@@ -1,35 +1,79 @@
-<!DOCTYPE html>
-<html>
-<head><title>Pedido #{{ pedido.id }}</title></head>
-<body>
-<h1>Pedido #{{ pedido.id }}</h1>
-<p><b>Tienda:</b> {{ pedido.store }} | <b>Vendedor:</b> {{ pedido.vendor }} | <b>Estado:</b> {{ pedido.status }}</p>
-<p><b>Creado:</b> {{ pedido.created_at }} | <b>Actualizado:</b> {{ pedido.updated_at }}</p>
-{% if pedido.previous_order %}
-<p><b>Pedido anterior:</b> #{{ pedido.previous_order.id }}</p>
-{% endif %}
+{% extends 'base.html' %}
+{% block title %}Pedido #{{ pedido.id }}{% endblock %}
+{% block content %}
+<a href="{% url 'index_orders' %}" class="text-blue-700 text-sm hover:underline mb-4 inline-block">← Volver a Pedidos</a>
 
-<h2>Items del Pedido</h2>
-<a href="{% url 'crear_item_pedido' pedido.id %}">+ Agregar Item</a>
-<br><br>
-<table border="1" cellpadding="4">
-<tr><th>Producto</th><th>Cantidad</th><th>Precio unitario</th><th>Acciones</th></tr>
-{% for item in items %}
-<tr>
-  <td>{{ item.product }}</td>
-  <td>{{ item.quantity }}</td>
-  <td>{{ item.unit_price_at_time }}</td>
-  <td>
-    <a href="{% url 'editar_item_pedido' item.id %}">Editar</a> |
-    <a href="{% url 'eliminar_item_pedido' item.id %}" onclick="return confirm('¿Eliminar item {{ item.product }}?')">Eliminar</a>
-  </td>
-</tr>
-{% empty %}
-<tr><td colspan="4">Sin items.</td></tr>
-{% endfor %}
-</table>
+<div class="flex items-center gap-3 mb-4">
+  <h2 class="text-2xl font-bold">Pedido #{{ pedido.id }}</h2>
+  {% if pedido.status == 'PENDING' %}
+    <span class="px-2 py-1 rounded text-sm font-semibold bg-yellow-100 text-yellow-800">Pendiente</span>
+  {% elif pedido.status == 'ACCEPTED' %}
+    <span class="px-2 py-1 rounded text-sm font-semibold bg-blue-100 text-blue-800">Aceptado</span>
+  {% elif pedido.status == 'DISPATCHED' %}
+    <span class="px-2 py-1 rounded text-sm font-semibold bg-orange-100 text-orange-800">Despachado</span>
+  {% elif pedido.status == 'DELIVERED' %}
+    <span class="px-2 py-1 rounded text-sm font-semibold bg-green-100 text-green-800">Entregado</span>
+  {% elif pedido.status == 'REJECTED' %}
+    <span class="px-2 py-1 rounded text-sm font-semibold bg-red-100 text-red-800">Rechazado</span>
+  {% endif %}
+</div>
 
-<br>
-<a href="{% url 'index_orders' %}">Volver a Pedidos</a>
-</body>
-</html>
+<!-- Order info card -->
+<div class="bg-white border border-gray-200 rounded-lg p-4 mb-4 max-w-lg text-sm">
+  <p><span class="font-semibold">Tienda:</span> {{ pedido.store }}</p>
+  <p><span class="font-semibold">Vendedor:</span> {{ pedido.vendor }}</p>
+  <p><span class="font-semibold">Creado:</span> {{ pedido.created_at|date:"d/m/Y H:i" }}</p>
+  <p><span class="font-semibold">Actualizado:</span> {{ pedido.updated_at|date:"d/m/Y H:i" }}</p>
+  {% if pedido.previous_order %}
+  <p><span class="font-semibold">Pedido anterior:</span> #{{ pedido.previous_order.id }}</p>
+  {% endif %}
+  {% if pedido.rejection_reason %}
+  <p class="mt-2 text-red-700"><span class="font-semibold">Motivo de rechazo:</span> {{ pedido.rejection_reason }}</p>
+  {% endif %}
+</div>
+
+<!-- Status timeline -->
+<div class="mb-6">
+  <p class="text-xs font-semibold text-gray-500 mb-1">Estado del pedido</p>
+  <div class="flex text-xs rounded overflow-hidden border border-gray-200">
+    <div class="flex-1 text-center py-2 {% if pedido.status == 'PENDING' %}bg-yellow-400 text-white font-bold{% else %}bg-gray-100 text-gray-500{% endif %}">Pendiente</div>
+    <div class="flex-1 text-center py-2 border-l {% if pedido.status == 'ACCEPTED' %}bg-blue-600 text-white font-bold{% else %}bg-gray-100 text-gray-500{% endif %}">Aceptado</div>
+    <div class="flex-1 text-center py-2 border-l {% if pedido.status == 'DISPATCHED' %}bg-orange-500 text-white font-bold{% else %}bg-gray-100 text-gray-500{% endif %}">Despachado</div>
+    <div class="flex-1 text-center py-2 border-l {% if pedido.status == 'DELIVERED' %}bg-green-600 text-white font-bold{% else %}bg-gray-100 text-gray-500{% endif %}">Entregado</div>
+    <div class="flex-1 text-center py-2 border-l {% if pedido.status == 'REJECTED' %}bg-red-600 text-white font-bold{% else %}bg-gray-100 text-gray-500{% endif %}">Rechazado</div>
+  </div>
+</div>
+
+<!-- Items table -->
+<div class="flex items-center justify-between mb-3">
+  <h3 class="text-lg font-semibold">Items del Pedido</h3>
+  <a href="{% url 'crear_item_pedido' pedido.id %}" class="bg-blue-700 text-white text-sm px-4 py-2 rounded hover:bg-blue-800">+ Agregar Item</a>
+</div>
+<div class="overflow-x-auto">
+  <table class="min-w-full border border-gray-200 text-sm">
+    <thead class="bg-gray-100">
+      <tr>
+        <th class="px-4 py-2 text-left font-semibold border-b">Producto</th>
+        <th class="px-4 py-2 text-left font-semibold border-b">Cantidad</th>
+        <th class="px-4 py-2 text-left font-semibold border-b">Precio unitario</th>
+        <th class="px-4 py-2 text-left font-semibold border-b">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr class="border-b hover:bg-gray-50">
+        <td class="px-4 py-2">{{ item.product }}</td>
+        <td class="px-4 py-2">{{ item.quantity }}</td>
+        <td class="px-4 py-2">${{ item.unit_price_at_time }}</td>
+        <td class="px-4 py-2 flex gap-3">
+          <a href="{% url 'editar_item_pedido' item.id %}" class="text-yellow-700 hover:underline">Editar</a>
+          <a href="{% url 'eliminar_item_pedido' item.id %}" onclick="return confirm('¿Eliminar item {{ item.product }}?')" class="text-red-600 hover:underline">Eliminar</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="px-4 py-2 text-gray-400 italic">Sin items.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

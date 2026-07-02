@@ -27,6 +27,15 @@ class Store(models.Model):
         related_name="stores"
     )
 
+    # DR-01: vendor assigned by distributor; auto-populates Order.vendor at order creation
+    vendor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_stores"
+    )
+
     def __str__(self):
         return self.name
 
@@ -40,6 +49,12 @@ class Product(models.Model):
         max_digits=10,
         decimal_places=2
     )
+
+    # DR-06: soft-delete; deactivated products hidden from order flow
+    is_active = models.BooleanField(default=True)
+
+    # DR-05: alert threshold per product, configurable by distributor (US-25)
+    low_stock_threshold = models.PositiveIntegerField(default=5)
 
     distributor = models.ForeignKey(
         Distributor,

@@ -5,7 +5,8 @@ from .models import Order, OrderItem
 class OrderForm(forms.ModelForm):
     class Meta:
         model = Order
-        fields = ['store', 'vendor', 'status', 'previous_order']
+        # vendor is omitted — auto-populated from store.vendor in the view (DR-01)
+        fields = ['store', 'status', 'previous_order', 'rejection_reason']
 
 
 class OrderItemForm(forms.ModelForm):

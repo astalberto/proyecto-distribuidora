@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
+
 class Role(models.TextChoices):
     DISTRIBUTOR = "DISTRIBUTOR", "Distributor"
     STORE_OWNER = "STORE_OWNER", "Store Owner"
@@ -16,13 +17,15 @@ class Distributor(models.Model):
         return self.name
 
 
-class User(models.Model):
+class User(AbstractUser):
+    # username is kept from AbstractUser but made optional since we log in with email
+    username = models.CharField(max_length=150, blank=True)
     email = models.EmailField(unique=True)
-    password_hash = models.CharField(max_length=255)
 
     role = models.CharField(
         max_length=20,
-        choices=Role.choices
+        choices=Role.choices,
+        blank=True
     )
 
     distributor = models.ForeignKey(
@@ -32,6 +35,9 @@ class User(models.Model):
         null=True,
         blank=True
     )
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []  # email is already USERNAME_FIELD, no extra required fields
 
     def __str__(self):
         return self.email
@@ -55,3 +61,32 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return self.token
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notifications"
+    )
+
+    # String FK avoids circular import with the orders app
+    order = models.ForeignKey(
+        "orders.Order",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications"
+    )
+
+    message = models.CharField(max_length=500)
+
+    is_read = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} — {self.message[:50]}"

@@ -1,13 +1,16 @@
-<!DOCTYPE html>
-<html>
-<head><title>Crear Usuario</title></head>
-<body>
-<h1>Crear Usuario</h1>
-<form action="" method="post">
-  {% csrf_token %}
-  {{ formulario.as_p }}
-  <p><input type="submit" value="Guardar"></p>
-</form>
-<a href="{% url 'index_accounts' %}">Cancelar</a>
-</body>
-</html>
+{% extends 'base.html' %}
+{% block title %}Crear Usuario{% endblock %}
+{% block content %}
+<a href="{% url 'index_accounts' %}" class="text-blue-700 text-sm hover:underline mb-4 inline-block">← Volver</a>
+<div class="bg-white border border-gray-200 rounded-lg p-6 max-w-lg">
+  <h2 class="text-xl font-bold mb-4">Crear Usuario</h2>
+  <form method="post">
+    {% csrf_token %}
+    {{ formulario.as_p }}
+    <div class="flex gap-3 mt-4">
+      <input type="submit" value="Guardar" class="bg-blue-700 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-800">
+      <a href="{% url 'index_accounts' %}" class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -11,8 +11,17 @@ def crear_pedido(request):
     if request.method == 'POST':
         formulario = OrderForm(request.POST)
         if formulario.is_valid():
-            formulario.save()
-            return redirect(index)
+            pedido = formulario.save(commit=False)
+            # DR-01: vendor derived from store.vendor, not supplied by the form
+            if not pedido.store.vendor:
+                formulario.add_error(
+                    'store',
+                    'Esta tienda no tiene un vendedor asignado. Contacta al distribuidor.'
+                )
+            else:
+                pedido.vendor = pedido.store.vendor
+                pedido.save()
+                return redirect(index)
     else:
         formulario = OrderForm()
     return render(request, 'orders/crear_pedido.html', {'formulario': formulario})

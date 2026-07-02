@@ -15,6 +15,7 @@ class OrderAdmin(admin.ModelAdmin):
         'store',
         'vendor',
         'status',
+        'rejection_reason',
         'created_at',
         'updated_at',
     )

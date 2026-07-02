@@ -7,7 +7,7 @@ from accounts.models import User
 def index(request):
     return render(request, 'catalog/index.html', {
         'tiendas': Store.objects.all(),
-        'productos': Product.objects.all(),
+        'productos': Product.objects.all(),          # distributor sees all (active + inactive)
         'inventarios': VendorInventory.objects.all(),
     })
 
@@ -74,7 +74,17 @@ def editar_producto(request, id):
 
 
 def eliminar_producto(request, id):
-    Product.objects.get(id=id).delete()
+    # DR-06: soft-delete only — hard delete would cascade to OrderItems
+    producto = Product.objects.get(id=id)
+    producto.is_active = False
+    producto.save(update_fields=['is_active'])
+    return redirect(index)
+
+
+def reactivar_producto(request, id):
+    producto = Product.objects.get(id=id)
+    producto.is_active = True
+    producto.save(update_fields=['is_active'])
     return redirect(index)
 
 

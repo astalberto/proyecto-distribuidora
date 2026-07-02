@@ -1,26 +1,38 @@
-<!DOCTYPE html>
-<html>
-<head><title>Confirmaciones de Entrega</title></head>
-<body>
-<h1>Confirmaciones de Entrega</h1>
-<a href="{% url 'crear_confirmacion' %}">+ Registrar Confirmación</a>
-<br><br>
-<table border="1" cellpadding="4">
-<tr><th>Pedido</th><th>Repartidor</th><th>Foto ID</th><th>Confirmado en</th><th>Acciones</th></tr>
-{% for c in confirmaciones %}
-<tr>
-  <td>{{ c.order }}</td>
-  <td>{{ c.delivery_user }}</td>
-  <td>{{ c.photo_public_id }}</td>
-  <td>{{ c.confirmed_at }}</td>
-  <td>
-    <a href="{% url 'editar_confirmacion' c.id %}">Editar</a> |
-    <a href="{% url 'eliminar_confirmacion' c.id %}" onclick="return confirm('¿Eliminar confirmación?')">Eliminar</a>
-  </td>
-</tr>
-{% empty %}
-<tr><td colspan="5">No hay confirmaciones.</td></tr>
-{% endfor %}
-</table>
-</body>
-</html>
+{% extends 'base.html' %}
+{% block title %}Cola de Entregas{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h2 class="text-2xl font-bold">Cola de Entregas</h2>
+  <a href="{% url 'crear_confirmacion' %}" class="bg-blue-700 text-white text-sm px-4 py-2 rounded hover:bg-blue-800">+ Confirmar Entrega</a>
+</div>
+
+<div class="overflow-x-auto">
+  <table class="min-w-full border border-gray-200 text-sm">
+    <thead class="bg-gray-100">
+      <tr>
+        <th class="px-4 py-2 text-left font-semibold border-b">Pedido</th>
+        <th class="px-4 py-2 text-left font-semibold border-b">Repartidor</th>
+        <th class="px-4 py-2 text-left font-semibold border-b">Foto ID (Cloudinary)</th>
+        <th class="px-4 py-2 text-left font-semibold border-b">Confirmado en</th>
+        <th class="px-4 py-2 text-left font-semibold border-b">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in confirmaciones %}
+      <tr class="border-b hover:bg-gray-50">
+        <td class="px-4 py-2">{{ c.order }}</td>
+        <td class="px-4 py-2">{{ c.delivery_user }}</td>
+        <td class="px-4 py-2 font-mono text-xs text-gray-600">{{ c.photo_public_id }}</td>
+        <td class="px-4 py-2">{{ c.confirmed_at|date:"d/m/Y H:i" }}</td>
+        <td class="px-4 py-2 flex gap-3">
+          <a href="{% url 'editar_confirmacion' c.id %}" class="text-yellow-700 hover:underline">Editar</a>
+          <a href="{% url 'eliminar_confirmacion' c.id %}" onclick="return confirm('¿Eliminar confirmación?')" class="text-red-600 hover:underline">Eliminar</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="px-4 py-2 text-gray-400 italic">No hay confirmaciones de entrega.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <title>{% block title %}ISBER Solutions{% endblock %} — Distribuidora</title>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col">
+
+  <header class="bg-blue-800 text-white shadow">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 class="text-xl font-bold tracking-wide">ISBER Solutions</h1>
+      <nav>
+        <ul class="flex gap-4 text-sm font-medium">
+          <li><a href="{% url 'index_accounts' %}" class="hover:underline hover:text-blue-200">Usuarios</a></li>
+          <li><a href="{% url 'index_catalog' %}" class="hover:underline hover:text-blue-200">Catálogo</a></li>
+          <li><a href="{% url 'index_orders' %}" class="hover:underline hover:text-blue-200">Pedidos</a></li>
+          <li><a href="{% url 'index_deliveries' %}" class="hover:underline hover:text-blue-200">Entregas</a></li>
+          <li><a href="{% url 'index_audit' %}" class="hover:underline hover:text-blue-200">Auditoría</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <section class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+    {% block content %}{% endblock %}
+  </section>
+
+  <footer class="bg-gray-200 text-gray-500 text-sm text-center py-3">
+    <p>Loja — Ecuador</p>
+    <p>{% now "j F Y H:i" %}</p>
+  </footer>
+
+</body>
+</html>
