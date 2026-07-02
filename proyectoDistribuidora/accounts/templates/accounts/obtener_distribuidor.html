@@ -1,38 +1,34 @@
 {% extends 'base.html' %}
 {% block title %}Distribuidor — {{ distribuidor.name }}{% endblock %}
 {% block content %}
-<a href="{% url 'index_accounts' %}" class="text-blue-700 text-sm hover:underline mb-4 inline-block">← Volver</a>
+<p><a href="{% url 'index_accounts' %}">← Volver</a></p>
 
-<div class="bg-white border border-gray-200 rounded-lg p-6 mb-6 max-w-lg">
-  <h2 class="text-2xl font-bold mb-1">{{ distribuidor.name }}</h2>
-  <p class="text-gray-500 text-sm mb-4">{{ distribuidor.email }}</p>
-  <a href="{% url 'editar_distribuidor' distribuidor.id %}" class="bg-yellow-500 text-white text-sm px-4 py-2 rounded hover:bg-yellow-600">Editar</a>
-</div>
+<h2>{{ distribuidor.name }}</h2>
+<p>{{ distribuidor.email }}</p>
+<p><a href="{% url 'editar_distribuidor' distribuidor.id %}">Editar</a></p>
 
-<h3 class="text-lg font-semibold mb-3">Usuarios de este distribuidor</h3>
-<div class="overflow-x-auto">
-  <table class="min-w-full border border-gray-200 text-sm">
-    <thead class="bg-gray-100">
-      <tr>
-        <th class="px-4 py-2 text-left font-semibold border-b">Email</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Rol</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for u in usuarios %}
-      <tr class="border-b hover:bg-gray-50">
-        <td class="px-4 py-2">{{ u.email }}</td>
-        <td class="px-4 py-2">{{ u.role }}</td>
-        <td class="px-4 py-2 flex gap-3">
-          <a href="{% url 'editar_usuario' u.id %}" class="text-yellow-700 hover:underline">Editar</a>
-          <a href="{% url 'eliminar_usuario' u.id %}" onclick="return confirm('¿Eliminar usuario {{ u.email }}?')" class="text-red-600 hover:underline">Eliminar</a>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="3" class="px-4 py-2 text-gray-400 italic">Sin usuarios para este distribuidor.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<h3>Usuarios de este distribuidor</h3>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Email</th>
+      <th>Rol</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in usuarios %}
+    <tr>
+      <td>{{ u.email }}</td>
+      <td>{{ u.role }}</td>
+      <td>
+        <a href="{% url 'editar_usuario' u.id %}">Editar</a> |
+        <a href="{% url 'eliminar_usuario' u.id %}" onclick="return confirm('¿Eliminar usuario {{ u.email }}?')">Eliminar</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="3">Sin usuarios para este distribuidor.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

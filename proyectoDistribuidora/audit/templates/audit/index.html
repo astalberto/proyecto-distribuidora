@@ -1,49 +1,37 @@
 {% extends 'base.html' %}
 {% block title %}Auditoría{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between mb-2">
-  <h2 class="text-2xl font-bold">Registro de Auditoría</h2>
-</div>
-<p class="text-sm text-gray-500 mb-4 italic">Solo lectura — los registros son generados automáticamente y no pueden modificarse.</p>
+<h2>Registro de Auditoría</h2>
+<p><em>Solo lectura — los registros son generados automáticamente y no pueden modificarse.</em></p>
 
-<div class="overflow-x-auto">
-  <table class="min-w-full border border-gray-200 text-sm">
-    <thead class="bg-gray-100">
-      <tr>
-        <th class="px-4 py-2 text-left font-semibold border-b">Timestamp</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Usuario</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Acción</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Entidad</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">ID</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Estado anterior</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Estado nuevo</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Detalles</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for log in logs %}
-      <tr class="border-b hover:bg-gray-50">
-        <td class="px-4 py-2 whitespace-nowrap">{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
-        <td class="px-4 py-2">{{ log.user }}</td>
-        <td class="px-4 py-2">{{ log.action }}</td>
-        <td class="px-4 py-2">{{ log.entity_type }}</td>
-        <td class="px-4 py-2">{{ log.entity_id }}</td>
-        <td class="px-4 py-2">
-          {% if log.previous_status %}
-            <span class="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{{ log.previous_status }}</span>
-          {% else %}—{% endif %}
-        </td>
-        <td class="px-4 py-2">
-          {% if log.new_status %}
-            <span class="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700">{{ log.new_status }}</span>
-          {% else %}—{% endif %}
-        </td>
-        <td class="px-4 py-2 text-xs text-gray-500 max-w-xs truncate">{{ log.details }}</td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="8" class="px-4 py-2 text-gray-400 italic">No hay registros de auditoría.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Timestamp</th>
+      <th>Usuario</th>
+      <th>Acción</th>
+      <th>Entidad</th>
+      <th>ID</th>
+      <th>Estado anterior</th>
+      <th>Estado nuevo</th>
+      <th>Detalles</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in logs %}
+    <tr>
+      <td>{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+      <td>{{ log.user }}</td>
+      <td>{{ log.action }}</td>
+      <td>{{ log.entity_type }}</td>
+      <td>{{ log.entity_id }}</td>
+      <td>{% if log.previous_status %}{{ log.previous_status }}{% else %}—{% endif %}</td>
+      <td>{% if log.new_status %}{{ log.new_status }}{% else %}—{% endif %}</td>
+      <td>{{ log.details }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="8">No hay registros de auditoría.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

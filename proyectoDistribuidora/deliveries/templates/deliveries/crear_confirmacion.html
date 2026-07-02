@@ -1,16 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Confirmar Entrega{% endblock %}
 {% block content %}
-<a href="{% url 'index_deliveries' %}" class="text-blue-700 text-sm hover:underline mb-4 inline-block">← Cola de entregas</a>
-<div class="bg-white border border-gray-200 rounded-lg p-6 max-w-lg">
-  <h2 class="text-xl font-bold mb-4">Confirmar Entrega</h2>
-  <form method="post">
-    {% csrf_token %}
-    {{ formulario.as_p }}
-    <div class="flex gap-3 mt-4">
-      <input type="submit" value="Confirmar Entrega" class="bg-green-700 text-white px-4 py-2 rounded cursor-pointer hover:bg-green-800">
-      <a href="{% url 'index_deliveries' %}" class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100">Cancelar</a>
-    </div>
-  </form>
-</div>
+<p><a href="{% url 'index_deliveries' %}">← Cola de entregas</a></p>
+<h2>Confirmar Entrega</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Confirmar Entrega">
+    <a href="{% url 'index_deliveries' %}">Cancelar</a>
+  </p>
+</form>
 {% endblock %}

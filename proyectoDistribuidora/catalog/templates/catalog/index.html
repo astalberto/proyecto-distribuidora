@@ -2,130 +2,113 @@
 {% block title %}Catálogo{% endblock %}
 {% block content %}
 
-<!-- TIENDAS -->
-<div class="flex items-center justify-between mb-3">
-  <h2 class="text-2xl font-bold">Tiendas</h2>
-  <a href="{% url 'crear_tienda' %}" class="bg-blue-700 text-white text-sm px-4 py-2 rounded hover:bg-blue-800">+ Nueva Tienda</a>
-</div>
-<div class="overflow-x-auto mb-8">
-  <table class="min-w-full border border-gray-200 text-sm">
-    <thead class="bg-gray-100">
-      <tr>
-        <th class="px-4 py-2 text-left font-semibold border-b">Nombre</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Dirección</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Teléfono</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Distribuidor</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Dueño</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in tiendas %}
-      <tr class="border-b hover:bg-gray-50">
-        <td class="px-4 py-2">{{ t.name }}</td>
-        <td class="px-4 py-2">{{ t.address }}</td>
-        <td class="px-4 py-2">{{ t.phone_number }}</td>
-        <td class="px-4 py-2">{{ t.distributor }}</td>
-        <td class="px-4 py-2">{{ t.owner }}</td>
-        <td class="px-4 py-2 flex gap-3">
-          <a href="{% url 'editar_tienda' t.id %}" class="text-yellow-700 hover:underline">Editar</a>
-          <a href="{% url 'eliminar_tienda' t.id %}" onclick="return confirm('¿Eliminar tienda {{ t.name }}?')" class="text-red-600 hover:underline">Eliminar</a>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" class="px-4 py-2 text-gray-400 italic">No hay tiendas.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<h2>Tiendas</h2>
+<p><a href="{% url 'crear_tienda' %}">+ Nueva Tienda</a></p>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Dirección</th>
+      <th>Teléfono</th>
+      <th>Distribuidor</th>
+      <th>Dueño</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tiendas %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td>{{ t.address }}</td>
+      <td>{{ t.phone_number }}</td>
+      <td>{{ t.distributor }}</td>
+      <td>{{ t.owner }}</td>
+      <td>
+        <a href="{% url 'editar_tienda' t.id %}">Editar</a> |
+        <a href="{% url 'eliminar_tienda' t.id %}" onclick="return confirm('¿Eliminar tienda {{ t.name }}?')">Eliminar</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No hay tiendas.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 
-<!-- PRODUCTOS -->
-<div class="flex items-center justify-between mb-3">
-  <h2 class="text-2xl font-bold">Productos</h2>
-  <a href="{% url 'crear_producto' %}" class="bg-blue-700 text-white text-sm px-4 py-2 rounded hover:bg-blue-800">+ Nuevo Producto</a>
-</div>
-<div class="overflow-x-auto mb-8">
-  <table class="min-w-full border border-gray-200 text-sm">
-    <thead class="bg-gray-100">
-      <tr>
-        <th class="px-4 py-2 text-left font-semibold border-b">Nombre</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Descripción</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Precio</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Distribuidor</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Estado</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in productos %}
-      <tr class="border-b hover:bg-gray-50 {% if not p.is_active %}opacity-50{% endif %}">
-        <td class="px-4 py-2">{{ p.name }}</td>
-        <td class="px-4 py-2">{{ p.description }}</td>
-        <td class="px-4 py-2">${{ p.unit_price }}</td>
-        <td class="px-4 py-2">{{ p.distributor }}</td>
-        <td class="px-4 py-2">
-          {% if p.is_active %}
-            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">Activo</span>
-          {% else %}
-            <span class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">Inactivo</span>
-          {% endif %}
-        </td>
-        <td class="px-4 py-2 flex gap-3">
-          <a href="{% url 'editar_producto' p.id %}" class="text-yellow-700 hover:underline">Editar</a>
-          {% if p.is_active %}
-            <a href="{% url 'eliminar_producto' p.id %}" onclick="return confirm('¿Desactivar producto {{ p.name }}?')" class="text-red-600 hover:underline">Desactivar</a>
-          {% else %}
-            <a href="{% url 'reactivar_producto' p.id %}" class="text-green-700 hover:underline">Reactivar</a>
-          {% endif %}
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" class="px-4 py-2 text-gray-400 italic">No hay productos.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<hr>
 
-<!-- INVENTARIO -->
-<div class="flex items-center justify-between mb-3">
-  <h2 class="text-2xl font-bold">Inventario de Vendedores</h2>
-</div>
-<p class="text-xs text-gray-500 mb-2">
+<h2>Productos</h2>
+<p><a href="{% url 'crear_producto' %}">+ Nuevo Producto</a></p>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Descripción</th>
+      <th>Precio</th>
+      <th>Distribuidor</th>
+      <th>Estado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in productos %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ p.description }}</td>
+      <td>${{ p.unit_price }}</td>
+      <td>{{ p.distributor }}</td>
+      <td>{% if p.is_active %}Activo{% else %}Inactivo{% endif %}</td>
+      <td>
+        <a href="{% url 'editar_producto' p.id %}">Editar</a> |
+        {% if p.is_active %}
+          <a href="{% url 'eliminar_producto' p.id %}" onclick="return confirm('¿Desactivar producto {{ p.name }}?')">Desactivar</a>
+        {% else %}
+          <a href="{% url 'reactivar_producto' p.id %}">Reactivar</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No hay productos.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Inventario de Vendedores</h2>
+<p>
   Para asignar inventario usa:
-  <code class="bg-gray-100 px-1 rounded">/catalog/inventory/assign/&lt;vendor_id&gt;/</code>
-  (obtener ID desde <a href="{% url 'index_accounts' %}" class="text-blue-700 hover:underline">Usuarios</a>)
+  <code>/catalog/inventory/assign/&lt;vendor_id&gt;/</code>
+  (obtener ID desde <a href="{% url 'index_accounts' %}">Usuarios</a>)
 </p>
-<div class="overflow-x-auto">
-  <table class="min-w-full border border-gray-200 text-sm">
-    <thead class="bg-gray-100">
-      <tr>
-        <th class="px-4 py-2 text-left font-semibold border-b">Vendedor</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Producto</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Cantidad</th>
-        <th class="px-4 py-2 text-left font-semibold border-b">Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for inv in inventarios %}
-      <tr class="border-b hover:bg-gray-50">
-        <td class="px-4 py-2">{{ inv.vendor }}</td>
-        <td class="px-4 py-2">{{ inv.product }}</td>
-        <td class="px-4 py-2">
-          {{ inv.quantity }}
-          {% if inv.quantity < inv.product.low_stock_threshold %}
-            <span class="ml-1 px-2 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">⚠ Stock bajo</span>
-          {% endif %}
-        </td>
-        <td class="px-4 py-2 flex gap-3">
-          <a href="{% url 'editar_inventario' inv.id %}" class="text-yellow-700 hover:underline">Editar</a>
-          <a href="{% url 'eliminar_inventario' inv.id %}" onclick="return confirm('¿Eliminar inventario?')" class="text-red-600 hover:underline">Eliminar</a>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="4" class="px-4 py-2 text-gray-400 italic">No hay inventario asignado.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Vendedor</th>
+      <th>Producto</th>
+      <th>Cantidad</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for inv in inventarios %}
+    <tr>
+      <td>{{ inv.vendor }}</td>
+      <td>{{ inv.product }}</td>
+      <td>
+        {{ inv.quantity }}
+        {% if inv.quantity < inv.product.low_stock_threshold %}
+          — ⚠ Stock bajo
+        {% endif %}
+      </td>
+      <td>
+        <a href="{% url 'editar_inventario' inv.id %}">Editar</a> |
+        <a href="{% url 'eliminar_inventario' inv.id %}" onclick="return confirm('¿Eliminar inventario?')">Eliminar</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4">No hay inventario asignado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 
 {% endblock %}

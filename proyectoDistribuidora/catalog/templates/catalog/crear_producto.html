@@ -1,16 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Nuevo Producto{% endblock %}
 {% block content %}
-<a href="{% url 'index_catalog' %}" class="text-blue-700 text-sm hover:underline mb-4 inline-block">← Volver al Catálogo</a>
-<div class="bg-white border border-gray-200 rounded-lg p-6 max-w-lg">
-  <h2 class="text-xl font-bold mb-4">Nuevo Producto</h2>
-  <form method="post">
-    {% csrf_token %}
-    {{ formulario.as_p }}
-    <div class="flex gap-3 mt-4">
-      <input type="submit" value="Guardar producto" class="bg-blue-700 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-800">
-      <a href="{% url 'index_catalog' %}" class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100">Cancelar</a>
-    </div>
-  </form>
-</div>
+<p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
+<h2>Nuevo Producto</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Guardar producto">
+    <a href="{% url 'index_catalog' %}">Cancelar</a>
+  </p>
+</form>
 {% endblock %}
