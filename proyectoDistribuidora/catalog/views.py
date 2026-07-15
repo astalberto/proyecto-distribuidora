@@ -2,8 +2,8 @@ from django.shortcuts import render, redirect
 from .models import Store, Product, VendorInventory
 from .forms import StoreForm, ProductForm, VendorInventoryForm
 from accounts.models import User
-
-
+from django.contrib.auth.decorators import login_required
+@login_required
 def index(request):
     return render(request, 'catalog/index.html', {
         'tiendas': Store.objects.all(),
@@ -13,7 +13,7 @@ def index(request):
 
 
 # --- Store ---
-
+@login_required
 def crear_tienda(request):
     if request.method == 'POST':
         formulario = StoreForm(request.POST)
@@ -24,7 +24,7 @@ def crear_tienda(request):
         formulario = StoreForm()
     return render(request, 'catalog/crear_tienda.html', {'formulario': formulario})
 
-
+@login_required
 def editar_tienda(request, id):
     tienda = Store.objects.get(id=id)
     if request.method == 'POST':
@@ -39,14 +39,14 @@ def editar_tienda(request, id):
         'tienda': tienda,
     })
 
-
+@login_required
 def eliminar_tienda(request, id):
     Store.objects.get(id=id).delete()
     return redirect(index)
 
 
 # --- Product ---
-
+@login_required
 def crear_producto(request):
     if request.method == 'POST':
         formulario = ProductForm(request.POST)
@@ -57,7 +57,7 @@ def crear_producto(request):
         formulario = ProductForm()
     return render(request, 'catalog/crear_producto.html', {'formulario': formulario})
 
-
+@login_required
 def editar_producto(request, id):
     producto = Product.objects.get(id=id)
     if request.method == 'POST':
@@ -72,7 +72,7 @@ def editar_producto(request, id):
         'producto': producto,
     })
 
-
+@login_required
 def eliminar_producto(request, id):
     # DR-06: soft-delete only — hard delete would cascade to OrderItems
     producto = Product.objects.get(id=id)
@@ -80,7 +80,7 @@ def eliminar_producto(request, id):
     producto.save(update_fields=['is_active'])
     return redirect(index)
 
-
+@login_required
 def reactivar_producto(request, id):
     producto = Product.objects.get(id=id)
     producto.is_active = True
@@ -89,7 +89,7 @@ def reactivar_producto(request, id):
 
 
 # --- VendorInventory — vendor injected via URL ---
-
+@login_required
 def crear_inventario(request, vendor_id):
     vendor = User.objects.get(id=vendor_id)
     if request.method == 'POST':
@@ -106,7 +106,7 @@ def crear_inventario(request, vendor_id):
         'vendor': vendor,
     })
 
-
+@login_required
 def editar_inventario(request, id):
     inventario = VendorInventory.objects.get(id=id)
     if request.method == 'POST':
@@ -121,7 +121,7 @@ def editar_inventario(request, id):
         'inventario': inventario,
     })
 
-
+@login_required
 def eliminar_inventario(request, id):
     VendorInventory.objects.get(id=id).delete()
     return redirect(index)
