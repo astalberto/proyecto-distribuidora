@@ -156,3 +156,9 @@ AUTH_USER_MODEL = 'accounts.User'
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'home'
+
+# Password reset (Sprint 1, Lane B). Console backend prints the reset email
+# to stdout for local dev — swap for the Resend SMTP relay once ISBER
+# provides credentials, per docs/requirements.md's Technical Constraints.
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'no-reply@isber-solutions.local'

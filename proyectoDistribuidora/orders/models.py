@@ -9,7 +9,13 @@ class OrderStatus(models.TextChoices):
     ACCEPTED = "ACCEPTED", "Accepted"
     REJECTED = "REJECTED", "Rejected"
     DISPATCHED = "DISPATCHED", "Dispatched"
+    # DELIVERED is non-terminal: it means "delivery person dropped it off,
+    # awaiting store owner confirmation" (DR-09). The store owner then moves
+    # it to CONFIRMED (received as expected) or DELIVERY_ISSUE (dispute);
+    # resolving an issue moves it back to CONFIRMED.
     DELIVERED = "DELIVERED", "Delivered"
+    DELIVERY_ISSUE = "DELIVERY_ISSUE", "Delivery Issue"
+    CONFIRMED = "CONFIRMED", "Confirmed"
 
 
 class Order(models.Model):
@@ -41,6 +47,14 @@ class Order(models.Model):
 
     # Set by vendor on rejection; surfaced in store owner notification (US-12)
     rejection_reason = models.CharField(max_length=500, blank=True)
+
+    # DR-09: store owner's delivery-issue report and the vendor's resolution.
+    # No structured remediation (inventory adjustment, partial fulfillment)
+    # yet — notes only; see docs/requirements.md.
+    issue_description = models.TextField(blank=True)
+    issue_reported_at = models.DateTimeField(null=True, blank=True)
+    resolution_notes = models.TextField(blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

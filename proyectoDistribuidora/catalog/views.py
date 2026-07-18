@@ -1,65 +1,78 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import get_object_or_404, render, redirect
+
+from accounts.decorators import role_required
+from accounts.models import User
 from .models import Store, Product, VendorInventory
 from .forms import StoreForm, ProductForm, VendorInventoryForm
-from accounts.models import User
-from django.contrib.auth.decorators import login_required
-@login_required
+
+
+@role_required('DISTRIBUTOR')
 def index(request):
+    distribuidor = request.user.distributor
     return render(request, 'catalog/index.html', {
-        'tiendas': Store.objects.all(),
-        'productos': Product.objects.all(),          # distributor sees all (active + inactive)
-        'inventarios': VendorInventory.objects.all(),
+        'tiendas': Store.objects.filter(distributor=distribuidor),
+        'productos': Product.objects.filter(distributor=distribuidor),  # active + inactive
+        'inventarios': VendorInventory.objects.filter(vendor__distributor=distribuidor),
     })
 
 
 # --- Store ---
-@login_required
+
+@role_required('DISTRIBUTOR')
 def crear_tienda(request):
     if request.method == 'POST':
-        formulario = StoreForm(request.POST)
+        formulario = StoreForm(request.POST, distributor=request.user.distributor)
         if formulario.is_valid():
-            formulario.save()
+            tienda = formulario.save(commit=False)
+            tienda.distributor = request.user.distributor
+            tienda.save()
             return redirect(index)
     else:
-        formulario = StoreForm()
+        formulario = StoreForm(distributor=request.user.distributor)
     return render(request, 'catalog/crear_tienda.html', {'formulario': formulario})
 
-@login_required
+
+@role_required('DISTRIBUTOR')
 def editar_tienda(request, id):
-    tienda = Store.objects.get(id=id)
+    tienda = get_object_or_404(Store, id=id, distributor=request.user.distributor)
     if request.method == 'POST':
-        formulario = StoreForm(request.POST, instance=tienda)
+        formulario = StoreForm(request.POST, instance=tienda, distributor=request.user.distributor)
         if formulario.is_valid():
             formulario.save()
             return redirect(index)
     else:
-        formulario = StoreForm(instance=tienda)
+        formulario = StoreForm(instance=tienda, distributor=request.user.distributor)
     return render(request, 'catalog/editar_tienda.html', {
         'formulario': formulario,
         'tienda': tienda,
     })
 
-@login_required
+
+@role_required('DISTRIBUTOR')
 def eliminar_tienda(request, id):
-    Store.objects.get(id=id).delete()
+    get_object_or_404(Store, id=id, distributor=request.user.distributor).delete()
     return redirect(index)
 
 
 # --- Product ---
-@login_required
+
+@role_required('DISTRIBUTOR')
 def crear_producto(request):
     if request.method == 'POST':
         formulario = ProductForm(request.POST)
         if formulario.is_valid():
-            formulario.save()
+            producto = formulario.save(commit=False)
+            producto.distributor = request.user.distributor
+            producto.save()
             return redirect(index)
     else:
         formulario = ProductForm()
     return render(request, 'catalog/crear_producto.html', {'formulario': formulario})
 
-@login_required
+
+@role_required('DISTRIBUTOR')
 def editar_producto(request, id):
-    producto = Product.objects.get(id=id)
+    producto = get_object_or_404(Product, id=id, distributor=request.user.distributor)
     if request.method == 'POST':
         formulario = ProductForm(request.POST, instance=producto)
         if formulario.is_valid():
@@ -72,56 +85,61 @@ def editar_producto(request, id):
         'producto': producto,
     })
 
-@login_required
+
+@role_required('DISTRIBUTOR')
 def eliminar_producto(request, id):
     # DR-06: soft-delete only — hard delete would cascade to OrderItems
-    producto = Product.objects.get(id=id)
+    producto = get_object_or_404(Product, id=id, distributor=request.user.distributor)
     producto.is_active = False
     producto.save(update_fields=['is_active'])
     return redirect(index)
 
-@login_required
+
+@role_required('DISTRIBUTOR')
 def reactivar_producto(request, id):
-    producto = Product.objects.get(id=id)
+    producto = get_object_or_404(Product, id=id, distributor=request.user.distributor)
     producto.is_active = True
     producto.save(update_fields=['is_active'])
     return redirect(index)
 
 
 # --- VendorInventory — vendor injected via URL ---
-@login_required
+
+@role_required('DISTRIBUTOR')
 def crear_inventario(request, vendor_id):
-    vendor = User.objects.get(id=vendor_id)
+    vendor = get_object_or_404(User, id=vendor_id, distributor=request.user.distributor, role='VENDOR')
     if request.method == 'POST':
-        formulario = VendorInventoryForm(request.POST)
+        formulario = VendorInventoryForm(request.POST, distributor=request.user.distributor)
         if formulario.is_valid():
             inv = formulario.save(commit=False)
             inv.vendor = vendor
             inv.save()
             return redirect(index)
     else:
-        formulario = VendorInventoryForm()
+        formulario = VendorInventoryForm(distributor=request.user.distributor)
     return render(request, 'catalog/crear_inventario.html', {
         'formulario': formulario,
         'vendor': vendor,
     })
 
-@login_required
+
+@role_required('DISTRIBUTOR')
 def editar_inventario(request, id):
-    inventario = VendorInventory.objects.get(id=id)
+    inventario = get_object_or_404(VendorInventory, id=id, vendor__distributor=request.user.distributor)
     if request.method == 'POST':
-        formulario = VendorInventoryForm(request.POST, instance=inventario)
+        formulario = VendorInventoryForm(request.POST, instance=inventario, distributor=request.user.distributor)
         if formulario.is_valid():
             formulario.save()
             return redirect(index)
     else:
-        formulario = VendorInventoryForm(instance=inventario)
+        formulario = VendorInventoryForm(instance=inventario, distributor=request.user.distributor)
     return render(request, 'catalog/editar_inventario.html', {
         'formulario': formulario,
         'inventario': inventario,
     })
 
-@login_required
+
+@role_required('DISTRIBUTOR')
 def eliminar_inventario(request, id):
-    VendorInventory.objects.get(id=id).delete()
+    get_object_or_404(VendorInventory, id=id, vendor__distributor=request.user.distributor).delete()
     return redirect(index)

@@ -18,7 +18,10 @@ class DeliveryConfirmation(models.Model):
         related_name="deliveries"
     )
 
-    photo_public_id = models.CharField(max_length=255)
+    # DR-09: photo proof is no longer the source of truth for delivery —
+    # the store owner's confirmation is (see Order.status). This is now just
+    # optional metadata the delivery person may leave; never validated.
+    photo_public_id = models.CharField(max_length=255, blank=True)
 
     confirmed_at = models.DateTimeField(default=timezone.now)
 

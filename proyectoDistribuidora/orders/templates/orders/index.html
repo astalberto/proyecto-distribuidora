@@ -2,7 +2,12 @@
 {% block title %}Pedidos{% endblock %}
 {% block content %}
 <h2>Pedidos</h2>
+{% if request.user.role == 'STORE_OWNER' %}
 <p><a href="{% url 'crear_pedido' %}">+ Crear Pedido</a></p>
+{% endif %}
+{% if request.user.role == 'VENDOR' %}
+<p id="polling-status"></p>
+{% endif %}
 
 <table border="1">
   <thead>
@@ -15,23 +20,68 @@
       <th>Acciones</th>
     </tr>
   </thead>
-  <tbody>
+  <tbody id="pedidos-tbody">
     {% for p in pedidos %}
-    <tr>
+    <tr data-pedido-id="{{ p.id }}">
       <td>{{ p.id }}</td>
       <td>{{ p.store }}</td>
       <td>{{ p.vendor }}</td>
       <td>{{ p.status }}</td>
       <td>{{ p.created_at|date:"d/m/Y H:i" }}</td>
       <td>
-        <a href="{% url 'ver_pedido' p.id %}">Ver</a> |
-        <a href="{% url 'editar_pedido' p.id %}">Editar</a> |
-        <a href="{% url 'eliminar_pedido' p.id %}" onclick="return confirm('¿Eliminar pedido #{{ p.id }}?')">Eliminar</a>
+        <a href="{% url 'ver_pedido' p.id %}">Ver</a>
       </td>
     </tr>
     {% empty %}
-    <tr><td colspan="6">No hay pedidos.</td></tr>
+    <tr id="pedidos-empty-row"><td colspan="6">No hay pedidos.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+
+{% if request.user.role == 'VENDOR' %}
+<script>
+// FR-06.6 / US-10: vendor dashboard picks up new pending orders within 30s
+// without a manual page reload.
+(function () {
+  var tbody = document.getElementById('pedidos-tbody');
+  var status = document.getElementById('polling-status');
+  var known = new Set();
+  tbody.querySelectorAll('tr[data-pedido-id]').forEach(function (row) {
+    known.add(row.getAttribute('data-pedido-id'));
+  });
+
+  function poll() {
+    fetch('/api/orders/pending/', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var nuevos = data.orders.filter(function (o) { return !known.has(String(o.id)); });
+        if (nuevos.length === 0) {
+          return;
+        }
+        var emptyRow = document.getElementById('pedidos-empty-row');
+        if (emptyRow) {
+          emptyRow.remove();
+        }
+        nuevos.forEach(function (o) {
+          known.add(String(o.id));
+          var row = document.createElement('tr');
+          row.setAttribute('data-pedido-id', o.id);
+          row.innerHTML =
+            '<td>' + o.id + '</td>' +
+            '<td>' + o.store + '</td>' +
+            '<td></td>' +
+            '<td>PENDING</td>' +
+            '<td>' + new Date(o.created_at).toLocaleString() + '</td>' +
+            '<td><a href="' + o.url + '">Ver</a></td>';
+          tbody.prepend(row);
+        });
+        status.textContent = nuevos.length + ' pedido(s) nuevo(s).';
+      })
+      .catch(function () { /* transient network error — try again next tick */ });
+  }
+
+  setInterval(poll, 30000);
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -3,8 +3,59 @@
 **Project:** proyecto-distribuidora  
 **Client:** ISBER Solutions, Loja, Ecuador  
 **Team:** 2 students, 1 semester (~3 months build time)  
-**Status:** Pre-implementation (architecture approved, eng review cleared)  
-**Last updated:** 2026-05-24
+**Status:** In progress — generic CRUD scaffolding built for all 5 apps; auth/RBAC/tenant isolation/order-lifecycle business logic not yet implemented (see Implementation Status below)  
+**Last updated:** 2026-07-15
+
+---
+
+## Implementation Status & Known Issues
+
+This section tracks divergence between this document and the actual state of `proyectoDistribuidora/` — read it before treating any Sprint 1-6 backlog item below as done. Last verified: 2026-07-15, against commit `d3795a6`.
+
+### Currently broken — environment does not run
+
+`manage.py check` fails with `ModuleNotFoundError: No module named 'rest_framework'` on the current dev machine. Commit `d3795a6` added `rest_framework` / `rest_framework.authtoken` to `INSTALLED_APPS` and imports DRF in `catalog/api_views.py` and the root `urls.py`, but the project's `.venv` never had `djangorestframework` installed.
+
+Separately, `requirements.txt` (repo root) pins `Django==5.2.2`, while the `.venv` actually has `Django==6.0.6` installed and running. This is not just drift to reconcile — **it's a hard Python-version constraint**: the team's dev machine runs **Python 3.14.6**, and Django did not support Python 3.14 until the **6.0** release; Django 5.2 (and the 4.2 line referenced further down in Technical Constraints) do not support Python 3.14 at all. So `requirements.txt` must specify `Django>=6.0`, not `5.2.2` or `4.2`, independent of whatever happens to already be installed locally.
+
+`psycopg2-binary==2.9.9` was also newly added to `requirements.txt` in the same commit — its Python 3.14 wheel availability has not been verified yet and should be checked before relying on it; a newer `psycopg2-binary` release may be required.
+
+None of the above has been fixed yet — this is a documentation pass only. The next pass that touches code must resolve this before anything else can be verified.
+
+### Template shadowing bug
+
+Commit `d3795a6` added `catalog/templates/base.html` (includes a login/logout session bar and a `{% static %}`-linked stylesheet) but it is currently **dead code**: Django's template loader checks `TEMPLATES[0]['DIRS']` (`proyectoDistribuidora/templates/`) before app directories, and the older, plain `proyectoDistribuidora/templates/base.html` (no auth awareness, no stylesheet) lives in `DIRS` and wins every render. The two `base.html` files need to be consolidated into the one in `DIRS` — not done yet.
+
+### Undocumented API surface — DRF catalog API
+
+Commit `d3795a6` added a full CRUD REST API for the catalog app that is **not** part of the originally designed architecture (the Component Diagram / Component Interface Summary above only ever specified one JSON endpoint: `GET /api/orders/pending/`, for the vendor's 30-second dashboard poll). This is being kept as an intentional expansion of scope, so it needs to be treated as a first-class part of the design going forward:
+
+| Endpoint | Method(s) | Auth | Notes |
+|----------|-----------|------|-------|
+| `/api/stores/` | GET/POST/PUT/PATCH/DELETE | Token or session | `StoreViewSet`, full CRUD |
+| `/api/products/` | GET/POST/PUT/PATCH/DELETE | Token or session | `ProductViewSet`, full CRUD |
+| `/api/inventory/` | GET/POST/PUT/PATCH/DELETE | Token or session | `VendorInventoryViewSet`, full CRUD |
+| `/api/token-auth/` | POST | — | DRF `obtain_auth_token`, issues a token for the above |
+
+**Not yet safe to use in production:** none of these viewsets scope by tenant or restrict by role — any authenticated user of any role, from any distributor, can currently read and write any other distributor's stores/products/inventory through this API. This must be closed (tenant-scoped `get_queryset` + a DISTRIBUTOR-only permission class) before this API surface is exposed beyond local dev. Tracked against FR-02.5 / NFR-01.4 (tenant isolation must be architecturally impossible to bypass — it currently isn't, via this path).
+
+### RBAC / tenant isolation gap (FR-02.3–FR-02.5, NFR-01.2–NFR-01.4) — RESOLVED 2026-07-16
+
+Closed in the Sprint 1 pass (see DR-08 above for the follow-on account-provisioning work): `role_required`/`superuser_required` decorators (`accounts/decorators.py`) applied across every app; every queryset scoped by `distributor` (directly or transitively); password reset implemented (`solicitar_reset_password`/`confirmar_reset_password`); the catalog DRF API tenant/role-scoped (`IsDistributor` permission + scoped `get_queryset`). Verified via `manage.py check` and a test-client smoke test. Login/logout (Django's built-in views) were already working.
+
+### Order integrity gap (FR-05.4, FR-06.2–FR-06.5, FR-09.1–FR-09.2) — RESOLVED 2026-07-16
+
+Closed in the Sprint 3 pass:
+- `OrderForm` now only exposes `store` (status/`previous_order`/`rejection_reason` are never client-editable). `editar_pedido`/`eliminar_pedido` (the generic edit that let status be set directly) are removed entirely, replaced by dedicated `aceptar_pedido`/`rechazar_pedido`/`despachar_pedido`/`cancelar_pedido` views (`orders/views.py`) — each gated to the correct role and current status.
+- `aceptar_pedido` wraps the stock check + deduction + status transition in a single `transaction.atomic()` block with `select_for_update()` on the affected `VendorInventory` rows (DR-01, NFR-03.1, NFR-03.3) — insufficient stock rolls back with a per-item error message and the order stays `PENDING` (NFR-03.2); nothing is written until every item clears the check.
+- `OrderItemForm` no longer accepts `unit_price_at_time` from the client — `orders/views.py` snapshots it server-side from `Product.unit_price` on both create and edit. The `product` field is also now scoped to `Product.objects.filter(inventory__vendor=<order's vendor>, is_active=True)`, closing the FR-05.3 gap (only products actually stocked by the assigned vendor are selectable) as a side effect.
+- `GET /api/orders/pending/` (root `urls.py`, `orders.views.pending_orders_api`) added as its own endpoint, distinct from the catalog DRF API — vendor-scoped, `role_required('VENDOR')`. The vendor order list (`orders/templates/orders/index.html`) polls it every 30s via plain JS and prepends newly-arrived `PENDING` orders without a page reload (FR-06.6, FR-10.1, US-10).
+- **Still not done, deferred to Tier 3/4 per the original sprint plan:** `AuditLog` writes on the original accept/reject/dispatch transitions (FR-09.1/FR-09.2/FR-09.5 — the newer `confirmar_recepcion`/`resolver_incidencia` transitions from DR-09 *do* write `AuditLog` entries), in-app notifications on the accept/reject/dispatch transitions (FR-10.2–FR-10.4 — again, DR-09's own transitions already notify), resubmitting a rejected order (US-22 — `previous_order` linking exists on the model but nothing sets it yet).
+- **Cloudinary `photo_public_id` validation (FR-07.3/NFR-01.5) — SUPERSEDED 2026-07-18, see DR-09.** Photo-based proof-of-delivery was dropped from scope entirely, not just the Cloudinary SDK piece — replaced by a store-owner-confirms-receipt flow. `photo_public_id` is now an optional, unvalidated field with no security role.
+
+### Repo hygiene (flagged, not evaluated further here)
+
+Commit `d3795a6` also added a 112KB `proyectoDistribuidora.zip` at the repo root — very likely an accidental commit (e.g., a local backup archive), not a real project artifact. Worth removing, but that's a version-control decision for the team, not addressed in this document.
 
 ---
 
@@ -152,9 +203,15 @@ erDiagram
 ### Order Status State Machine
 
 ```
-PENDING → ACCEPTED → DISPATCHED → DELIVERED
+PENDING → ACCEPTED → DISPATCHED → DELIVERED → CONFIRMED
+                                            → DELIVERY_ISSUE → CONFIRMED
 PENDING → REJECTED → (new Order with previousOrderId pointing back)
 ```
+
+Per DR-09: `DELIVERED` is non-terminal — it means the delivery person dropped
+the order off, awaiting the store owner's confirmation. The store owner then
+moves it to `CONFIRMED` (received as expected) or `DELIVERY_ISSUE` (a
+dispute); resolving an issue moves it back to `CONFIRMED`.
 
 ---
 
@@ -209,6 +266,42 @@ Resolved before prototype design. Each decision closes a gap identified in the B
 **Gap:** US-06 required deactivation; `eliminar_producto` performed a hard delete that would cascade to `OrderItem`.
 
 **Decision:** `Product` gains `is_active BooleanField (default=True)`. The delete action now sets `is_active=False`; hard deletes are blocked at the application layer. Deactivated products can be reactivated (new `reactivar_producto` view). A deactivated product's `VendorInventory` rows are preserved but hidden from the order placement form. Vendors may still accept pending orders referencing a deactivated product because the stock check uses the `VendorInventory` record, not the `is_active` flag.
+
+---
+
+### DR-07 — Per-Role User Creation Pages
+
+**Gap:** US-24 originally specified a single "create user" form with a `role` dropdown (VENDOR / STORE_OWNER / DELIVERY / DISTRIBUTOR); in practice this made it easy for a distributor admin to pick the wrong role by mistake, and gave every account type an identical, unlabeled creation page.
+
+**Decision:** `role` is removed from `UserCreateForm` and is instead fixed by the URL: `accounts/users/new/<role>/` (`crear_usuario` view, `accounts/urls.py`). The `accounts` index page now links to four separate pages — "+ Admin Distribuidor", "+ Vendedor", "+ Dueño de Tienda", "+ Repartidor" — each rendering the same template with a role-specific heading and no role field to choose. An unknown `role` segment 404s. `UserEditForm` is unchanged and still exposes `role` as an editable dropdown, since reassigning an existing user's role is a distinct action from creating one.
+
+---
+
+### DR-08 — Account Provisioning: Distributor Onboarding and Store Owner Self-Registration
+
+**Gap:** FR-01.1 ("register with email, password, and a pre-assigned role") and UC-01's precondition ("user has a registered account with an assigned role") assumed every account is provisioned by an admin ahead of time — there is no self-registration user story anywhere in this document. In practice this created two problems: (1) creating a new `Distributor` tenant was a two-step, superuser-only flow — create the `Distributor` record in-app, then separately use `/admin/` to create its first `DISTRIBUTOR`-role user, since `crear_usuario` itself requires an existing `DISTRIBUTOR` user to be logged in; (2) every `STORE_OWNER` account had to be created manually by a distributor admin, which doesn't scale for a distributor with many small, non-technical retail customers and puts unnecessary friction on the least technical role in the system.
+
+**Decision:**
+- **Distributor onboarding stays superuser-gated** (this deployment serves one real client, ISBER Solutions — multi-tenancy exists for data isolation correctness, not for public multi-tenant self-signup), but is now a single combined step. `crear_distribuidor` (`accounts/views.py`) uses `DistributorOnboardingForm` to create the `Distributor` and its first `DISTRIBUTOR`-role `User` together inside one `transaction.atomic()` block — no more dropping into `/admin/` for the second half.
+- **Store owners self-register via a per-distributor invite link**, not a public signup form. `Distributor` gained an opaque `invite_token` field (`accounts/models.py`, `secrets.token_urlsafe(32)`, regenerable via `regenerate_invite_token()` if a link/QR code is compromised). The unauthenticated route `accounts/join/<token>/` (`registrar_tienda` view) resolves the token to exactly one `Distributor` and renders a minimal form (`StoreOwnerSignupForm`: email, password, store name/address/phone) — the distributor is implicit in the link, never chosen from a public list, so the existence of other distributors is never exposed and the non-technical store owner never has to correctly identify their own distributor from a menu. On submit, the `STORE_OWNER` `User` and their `Store` are created atomically and the new user is logged in immediately. The new `Store` starts with no `vendor` assigned; the existing DR-01 edge-case message ("Tu tienda no tiene un vendedor asignado...") already covers this until the distributor assigns one.
+- The distributor's own dashboard (`accounts/index.html`) displays the full invite URL (meant to be shared via WhatsApp or printed as a QR code) plus a "generar nuevo enlace" action to revoke and rotate it.
+
+**Not done in this pass:** rate-limiting or CAPTCHA on `registrar_tienda` (a guessable-enough token plus no throttling means the endpoint could be hit repeatedly to enumerate valid distributor tokens by trial, though `token_urlsafe(32)` makes brute-forcing infeasible in practice); email verification for self-registered store owners.
+
+---
+
+### DR-09 — Delivery Confirmation Without Cloudinary: Store-Owner Attestation Replaces Photo Proof
+
+**Gap:** FR-07.3/NFR-01.5 required Cloudinary-validated photos as the mechanism proving a delivery actually happened, and `DELIVERED` was a terminal status set unilaterally by the delivery person. Cloudinary was never implemented (`photo_public_id` accepted any string with no validation) — but the deeper problem, raised when descoping Cloudinary, is that photo proof was never the right source of truth for this business: it proves *a* photo was taken, not that the *right* products arrived in the *right* condition. Only the store owner receiving the order can actually verify that.
+
+**Decision:** Photo-based proof-of-delivery is dropped from scope entirely (not just the Cloudinary SDK piece) and replaced with a store-owner-attestation flow:
+- `Order.status` gains two states past `DELIVERED`: `CONFIRMED` (store owner verified the order and it's correct) and `DELIVERY_ISSUE` (store owner disputes it). `DELIVERED` becomes non-terminal — see the updated Order Status State Machine above.
+- `deliveries.crear_confirmacion` (unchanged trigger: the delivery person marking a `DISPATCHED` order as delivered) now also flips `Order.status` to `DELIVERED` and creates a `Notification` to the store owner — previously this view created a `DeliveryConfirmation` record but never actually touched `Order.status` at all, a pre-existing gap DR-09 also closes. `DeliveryConfirmationForm`'s `order` field is now scoped to `DISPATCHED` orders only (previously any order in the distributor, regardless of status, could be picked).
+- `DeliveryConfirmation.photo_public_id` becomes optional (`blank=True`) and is never validated — it's now just metadata the delivery person may optionally leave, not proof of anything. No Cloudinary dependency, no upload preset, no SDK.
+- Three new `orders/` views implement the store owner's side: `confirmar_recepcion` (`DELIVERED`→`CONFIRMED`, notifies the vendor, writes an `AuditLog` entry) and `reportar_incidencia` (`DELIVERED`→`DELIVERY_ISSUE`, captures `Order.issue_description`/`issue_reported_at`, notifies both the vendor and the delivery person). The vendor resolves a dispute via `resolver_incidencia` (`DELIVERY_ISSUE`→`CONFIRMED`, captures `Order.resolution_notes`/`resolved_at`, notifies the store owner, writes an `AuditLog` entry) — resolution is notes-only in this pass, no inventory adjustment or partial-fulfillment tooling (see "Not done in this pass" below).
+- `AuditLog` writes are scoped to just these two new transitions (`order_confirmed`, `delivery_issue_resolved`) — writing entries for the older `aceptar_pedido`/`rechazar_pedido`/`despachar_pedido` transitions remains the separate, already-tracked Tier 3 gap (see Implementation Status above).
+
+**Explicitly out of scope (see "Out of Scope (MVP)" below):** Cloudinary SDK integration, unsigned upload presets, and server-side `public_id` validation are dropped from the MVP, not deferred to a later sprint — FR-07.3/NFR-01.5 as originally written are superseded by this DR, not merely unimplemented. Structured remediation on a resolved issue (inventory adjustment, partial fulfillment, redelivery tracking) is deferred, not built — `resolver_incidencia` only records notes and flips status.
 
 ---
 
@@ -650,9 +743,9 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 **US-24** — Gestionar usuarios de la plataforma  
 *As a DISTRIBUTOR, I want to create users and assign them roles so that vendors, store owners, and delivery personnel can access the system.*  
-**Priority:** M | **Related:** UC-08, FR-02.1  
+**Priority:** M | **Related:** UC-08, FR-02.1, DR-07  
 **Acceptance Criteria:**
-- [ ] Distributor can create a user with: email, password, role (VENDOR / STORE_OWNER / DELIVERY), and distributor scoping.
+- [x] Distributor creates a user via a role-specific page (Admin Distribuidor / Vendedor / Dueño de Tienda / Repartidor) rather than picking a role from a dropdown — see DR-07.
 - [ ] Distributor can edit a user's role and active status.
 - [ ] A user created by Distributor A is invisible to Distributor B.
 - [ ] The distributor cannot create another DISTRIBUTOR-role user.
@@ -1071,7 +1164,7 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 | ID | Priority | Requirement |
 |----|----------|-------------|
-| NFR-05.1 | **M** | The application must deploy on the Vercel free tier without requiring paid add-ons. |
+| NFR-05.1 | **M** | The application must deploy on the Railway free tier without requiring paid add-ons. |
 | NFR-05.2 | **M** | The database must run on a managed PostgreSQL free tier. |
 | NFR-05.3 | **M** | Photo storage must remain within the free-tier limits of the chosen cloud storage provider during MVP usage. |
 | NFR-05.4 | **M** | All secrets (database URL, auth secrets, storage keys, email API key) must be injected via environment variables and must never appear in source code or version control. |
@@ -1126,7 +1219,7 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 > These decisions are fixed for this project due to team constraints, academic requirements, or client agreements. They are not requirements, but they affect implementation choices.
 
-- **Framework:** Django 4.2 MVT (server-rendered templates)
+- **Framework:** Django 6.0+ MVT (server-rendered templates) — hard constraint, not a preference: the team's dev machine runs Python 3.14.6, and Python 3.14 support was only added in Django 6.0; earlier lines (including the originally-planned 4.2 and the 5.2.2 currently pinned in `requirements.txt`) do not support this Python version
 - **ORM:** Django ORM against a PostgreSQL database (Railway)
 - **Authentication:** `django.contrib.auth` + custom `AbstractUser` with `role` CharField
 - **Password hashing:** Django's default PBKDF2 (built-in, no extra dependency)
@@ -1295,6 +1388,8 @@ Explicitly deferred to a post-graduation roadmap:
 
 | Feature | Reason deferred |
 |---------|-----------------|
+| Cloudinary photo-proof validation for deliveries | DR-09: superseded, not deferred — store-owner confirmation replaces photo proof as the source of truth |
+| Structured issue remediation (inventory adjustment, partial fulfillment) on a resolved delivery dispute | DR-09: `resolver_incidencia` is notes-only for now |
 | SRI electronic invoicing | Regulatory complexity exceeds academic timeline |
 | Commission calculation | Requires payroll integration out of scope |
 | Vendor training module | Nice-to-have, no client urgency |
