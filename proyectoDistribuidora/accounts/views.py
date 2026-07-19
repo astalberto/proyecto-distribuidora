@@ -4,13 +4,16 @@ from datetime import timedelta
 from django.contrib.auth import login as auth_login
 from django.core.mail import send_mail
 from django.db import transaction
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
 from django.utils import timezone
 
+from catalog.models import Store, VendorInventory
+from orders.models import Order, OrderStatus
 from .decorators import role_required, superuser_required
-from .models import Distributor, PasswordResetToken, Role, User
+from .models import Distributor, Notification, PasswordResetToken, Role, User
 from .forms import (
     DistributorForm,
     DistributorOnboardingForm,
@@ -139,6 +142,83 @@ def eliminar_usuario(request, id):
 
 
 @role_required('DISTRIBUTOR')
+def dashboard(request):
+    """FR-08.1 (orders by status), FR-08.2 (filter by date/vendor/store/
+    status), FR-08.3 (stock per product per vendor), FR-08.4 (summary
+    metrics, filterable by vendor and period).
+
+    Every query is freshly evaluated on every request — the requirement is
+    "reflects the latest state within one page load", not real-time push,
+    so a plain page load already satisfies it."""
+    distribuidor = request.user.distributor
+
+    pedidos = Order.objects.filter(store__distributor=distribuidor)
+
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    vendor_id = request.GET.get('vendor', '')
+    store_id = request.GET.get('store', '')
+    status = request.GET.get('status', '')
+
+    if date_from:
+        pedidos = pedidos.filter(created_at__date__gte=date_from)
+    if date_to:
+        pedidos = pedidos.filter(created_at__date__lte=date_to)
+    if vendor_id:
+        pedidos = pedidos.filter(vendor_id=vendor_id)
+    if store_id:
+        pedidos = pedidos.filter(store_id=store_id)
+    if status:
+        pedidos = pedidos.filter(status=status)
+
+    ordenes_por_estado = pedidos.values('status').annotate(total=Count('id')).order_by('status')
+    pedidos_recientes = pedidos.select_related('store', 'vendor').order_by('-created_at')[:50]
+
+    # Average fulfillment time: for a CONFIRMED order, updated_at is exactly
+    # when it reached that terminal state (whether via the direct
+    # confirm-receipt path or the report-issue -> resolve path — either way
+    # the final save that sets status=CONFIRMED is the last one).
+    tiempo_promedio = pedidos.filter(status=OrderStatus.CONFIRMED).annotate(
+        duracion=ExpressionWrapper(F('updated_at') - F('created_at'), output_field=DurationField())
+    ).aggregate(promedio=Avg('duracion'))['promedio']
+
+    metricas = {
+        'total': pedidos.count(),
+        'fulfilled': pedidos.filter(status=OrderStatus.CONFIRMED).count(),
+        'rejected': pedidos.filter(status=OrderStatus.REJECTED).count(),
+        'tiempo_promedio': tiempo_promedio,
+    }
+
+    inventario = (
+        VendorInventory.objects.filter(vendor__distributor=distribuidor)
+        .select_related('vendor', 'product')
+        .order_by('product__name', 'vendor__email')
+    )
+    stock_bajo_count = sum(
+        1 for inv in inventario if inv.quantity < inv.product.low_stock_threshold
+    )
+
+    return render(request, 'accounts/dashboard.html', {
+        'distribuidor': distribuidor,
+        'ordenes_por_estado': ordenes_por_estado,
+        'pedidos_recientes': pedidos_recientes,
+        'metricas': metricas,
+        'inventario': inventario,
+        'stock_bajo_count': stock_bajo_count,
+        'vendedores': User.objects.filter(distributor=distribuidor, role=Role.VENDOR),
+        'tiendas': Store.objects.filter(distributor=distribuidor),
+        'status_choices': OrderStatus.choices,
+        'filtros': {
+            'date_from': date_from,
+            'date_to': date_to,
+            'vendor': vendor_id,
+            'store': store_id,
+            'status': status,
+        },
+    })
+
+
+@role_required('DISTRIBUTOR')
 def regenerar_invite_token(request):
     """Revokes the distributor's current store-owner invite link and issues
     a new one (e.g. if the old link/QR was compromised)."""
@@ -244,3 +324,27 @@ def confirmar_reset_password(request, token):
     else:
         formulario = SetNewPasswordForm()
     return render(request, 'accounts/confirmar_reset_password.html', {'formulario': formulario})
+
+
+# --- Notifications (US-16) — every role can receive them, not just STORE_OWNER ---
+
+@role_required(*Role.values)
+def notificaciones(request):
+    notifs = request.user.notifications.select_related('order').all()
+    return render(request, 'accounts/notificaciones.html', {'notificaciones': notifs})
+
+
+@role_required(*Role.values)
+def marcar_notificacion_leida(request, id):
+    notif = get_object_or_404(Notification, id=id, user=request.user)
+    if request.method == 'POST':
+        notif.is_read = True
+        notif.save(update_fields=['is_read'])
+    return redirect('notificaciones')
+
+
+@role_required(*Role.values)
+def marcar_todas_leidas(request):
+    if request.method == 'POST':
+        request.user.notifications.filter(is_read=False).update(is_read=True)
+    return redirect('notificaciones')

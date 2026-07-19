@@ -14,11 +14,15 @@
         <ul>
           <li><a href="{% url 'home' %}">Inicio</a></li>
           {% if user.is_authenticated %}
+          {% if user.role == 'DISTRIBUTOR' %}
+          <li><a href="{% url 'distributor_dashboard' %}">Dashboard</a></li>
+          {% endif %}
           <li><a href="{% url 'index_accounts' %}">Usuarios</a></li>
           <li><a href="{% url 'index_catalog' %}">Catálogo</a></li>
           <li><a href="{% url 'index_orders' %}">Pedidos</a></li>
           <li><a href="{% url 'index_deliveries' %}">Entregas</a></li>
           <li><a href="{% url 'index_audit' %}">Auditoría</a></li>
+          <li><a href="{% url 'notificaciones' %}">Notificaciones{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</a></li>
           {% endif %}
         </ul>
       </nav>

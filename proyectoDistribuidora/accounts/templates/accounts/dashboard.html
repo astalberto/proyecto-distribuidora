@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h2>Dashboard — {{ distribuidor.name }}</h2>
+
+{% if stock_bajo_count %}
+<p class="error">⚠ {{ stock_bajo_count }} producto(s) con stock bajo — ver la tabla de inventario más abajo.</p>
+{% endif %}
+
+<h3>Filtros</h3>
+<form method="get">
+  <label for="date_from">Desde:</label>
+  <input type="date" id="date_from" name="date_from" value="{{ filtros.date_from }}">
+  <label for="date_to">Hasta:</label>
+  <input type="date" id="date_to" name="date_to" value="{{ filtros.date_to }}">
+  <label for="vendor">Vendedor:</label>
+  <select id="vendor" name="vendor">
+    <option value="">Todos</option>
+    {% for v in vendedores %}
+    <option value="{{ v.id }}" {% if filtros.vendor == v.id|stringformat:"s" %}selected{% endif %}>{{ v.email }}</option>
+    {% endfor %}
+  </select>
+  <label for="store">Tienda:</label>
+  <select id="store" name="store">
+    <option value="">Todas</option>
+    {% for t in tiendas %}
+    <option value="{{ t.id }}" {% if filtros.store == t.id|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>
+    {% endfor %}
+  </select>
+  <label for="status">Estado:</label>
+  <select id="status" name="status">
+    <option value="">Todos</option>
+    {% for value, label in status_choices %}
+    <option value="{{ value }}" {% if filtros.status == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Filtrar</button>
+  <a href="{% url 'distributor_dashboard' %}">Limpiar filtros</a>
+</form>
+
+<h3>Resumen</h3>
+<table border="1">
+  <tbody>
+    <tr><th>Total de pedidos</th><td>{{ metricas.total }}</td></tr>
+    <tr><th>Cumplidos (confirmados)</th><td>{{ metricas.fulfilled }}</td></tr>
+    <tr><th>Rechazados</th><td>{{ metricas.rejected }}</td></tr>
+    <tr><th>Tiempo promedio de cumplimiento</th><td>{% if metricas.tiempo_promedio %}{{ metricas.tiempo_promedio }}{% else %}—{% endif %}</td></tr>
+  </tbody>
+</table>
+
+<h3>Pedidos por estado</h3>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Estado</th>
+      <th>Cantidad</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for fila in ordenes_por_estado %}
+    <tr>
+      <td>{{ fila.status }}</td>
+      <td>{{ fila.total }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="2">No hay pedidos con estos filtros.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Pedidos ({{ pedidos_recientes|length }} de {{ metricas.total }})</h3>
+<table border="1">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Tienda</th>
+      <th>Vendedor</th>
+      <th>Estado</th>
+      <th>Creado</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in pedidos_recientes %}
+    <tr>
+      <td><a href="{% url 'ver_pedido' p.id %}">{{ p.id }}</a></td>
+      <td>{{ p.store }}</td>
+      <td>{{ p.vendor }}</td>
+      <td>{{ p.status }}</td>
+      <td>{{ p.created_at|date:"d/m/Y H:i" }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No hay pedidos con estos filtros.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Inventario por vendedor</h3>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Producto</th>
+      <th>Vendedor</th>
+      <th>Cantidad</th>
+      <th>Umbral de stock bajo</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for inv in inventario %}
+    <tr{% if inv.quantity < inv.product.low_stock_threshold %} class="error"{% endif %}>
+      <td>{{ inv.product.name }}</td>
+      <td>{{ inv.vendor.email }}</td>
+      <td>
+        {{ inv.quantity }}
+        {% if inv.quantity < inv.product.low_stock_threshold %} — ⚠ Stock bajo{% endif %}
+      </td>
+      <td>{{ inv.product.low_stock_threshold }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4">Sin inventario asignado todavía.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

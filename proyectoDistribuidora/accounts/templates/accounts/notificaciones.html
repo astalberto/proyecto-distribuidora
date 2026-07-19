@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Notificaciones{% endblock %}
+{% block content %}
+<h2>Notificaciones</h2>
+{% if notificaciones %}
+<form method="post" action="{% url 'marcar_todas_leidas' %}">
+  {% csrf_token %}
+  <button type="submit">Marcar todas como leídas</button>
+</form>
+{% endif %}
+<table border="1">
+  <thead>
+    <tr>
+      <th>Mensaje</th>
+      <th>Pedido</th>
+      <th>Fecha</th>
+      <th>Estado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for n in notificaciones %}
+    <tr{% if not n.is_read %} class="unread"{% endif %}>
+      <td>{{ n.message }}</td>
+      <td>{% if n.order %}<a href="{% url 'ver_pedido' n.order.id %}">#{{ n.order.id }}</a>{% else %}—{% endif %}</td>
+      <td>{{ n.created_at|date:"d/m/Y H:i" }}</td>
+      <td>{% if n.is_read %}Leída{% else %}No leída{% endif %}</td>
+      <td>
+        {% if not n.is_read %}
+        <form method="post" action="{% url 'marcar_notificacion_leida' n.id %}" style="display:inline">
+          {% csrf_token %}
+          <button type="submit">Marcar como leída</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No tienes notificaciones.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

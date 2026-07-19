@@ -10,9 +10,15 @@ from .forms import StoreForm, ProductForm, VendorInventoryForm
 def index(request):
     distribuidor = request.user.distributor
     return render(request, 'catalog/index.html', {
-        'tiendas': Store.objects.filter(distributor=distribuidor),
-        'productos': Product.objects.filter(distributor=distribuidor),  # active + inactive
-        'inventarios': VendorInventory.objects.filter(vendor__distributor=distribuidor),
+        # NFR-02.5: catalog/index.html displays distributor/owner/vendor
+        # (Store), distributor (Product), and vendor/product (VendorInventory)
+        # per row — eager-load to avoid an N+1 per row.
+        'tiendas': Store.objects.filter(distributor=distribuidor)
+            .select_related('distributor', 'owner', 'vendor'),
+        'productos': Product.objects.filter(distributor=distribuidor)  # active + inactive
+            .select_related('distributor'),
+        'inventarios': VendorInventory.objects.filter(vendor__distributor=distribuidor)
+            .select_related('vendor', 'product'),
     })
 
 

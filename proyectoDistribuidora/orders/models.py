@@ -60,6 +60,15 @@ class Order(models.Model):
 
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        # NFR-02.6: composite index for the vendor's pending-orders queries
+        # and the polling endpoint; a separate index for store-scoped
+        # lookups (store owner's order list, distributor dashboard).
+        indexes = [
+            models.Index(fields=['vendor', 'status']),
+            models.Index(fields=['store']),
+        ]
+
     def __str__(self):
         return f"Order {self.id}"
 

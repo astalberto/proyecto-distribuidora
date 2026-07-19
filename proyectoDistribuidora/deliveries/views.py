@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 
 from accounts.decorators import role_required
 from accounts.models import Notification
+from audit.models import AuditLog
 from orders.models import OrderStatus
 from .models import DeliveryConfirmation
 from .forms import DeliveryConfirmationForm
@@ -10,9 +11,11 @@ from .forms import DeliveryConfirmationForm
 
 @role_required('DELIVERY', 'DISTRIBUTOR')
 def index(request):
+    # NFR-02.5: deliveries/index.html displays order and delivery_user per
+    # row — eager-load to avoid an N+1 per confirmation.
     confirmaciones = DeliveryConfirmation.objects.filter(
         order__store__distributor=request.user.distributor
-    )
+    ).select_related('order', 'delivery_user')
     return render(request, 'deliveries/index.html', {'confirmaciones': confirmaciones})
 
 
@@ -27,8 +30,18 @@ def crear_confirmacion(request):
                 confirmacion.save()
 
                 pedido = confirmacion.order
+                previous_status = pedido.status
                 pedido.status = OrderStatus.DELIVERED
                 pedido.save(update_fields=['status', 'updated_at'])
+
+                AuditLog.objects.create(
+                    user=request.user,
+                    action='order_delivered',
+                    entity_type='Order',
+                    entity_id=str(pedido.id),
+                    previous_status=previous_status,
+                    new_status=OrderStatus.DELIVERED,
+                )
 
                 Notification.objects.create(
                     user=pedido.store.owner,

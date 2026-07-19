@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Count
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
@@ -15,12 +16,16 @@ from .forms import OrderForm, OrderItemForm, ReportarIncidenciaForm, ResolverInc
 def _orders_for(user):
     """Scope the Order queryset to what this role is allowed to see."""
     if user.role == 'STORE_OWNER':
-        return Order.objects.filter(store__owner=user)
-    if user.role == 'VENDOR':
-        return Order.objects.filter(vendor=user)
-    if user.role == 'DISTRIBUTOR':
-        return Order.objects.filter(store__distributor=user.distributor)
-    return Order.objects.none()
+        qs = Order.objects.filter(store__owner=user)
+    elif user.role == 'VENDOR':
+        qs = Order.objects.filter(vendor=user)
+    elif user.role == 'DISTRIBUTOR':
+        qs = Order.objects.filter(store__distributor=user.distributor)
+    else:
+        return Order.objects.none()
+    # NFR-02.5: index.html/ver_pedido.html both display store and vendor
+    # per row — eager-load to avoid an N+1 per order.
+    return qs.select_related('store', 'vendor')
 
 
 @role_required('STORE_OWNER', 'VENDOR', 'DISTRIBUTOR')
@@ -69,6 +74,15 @@ def cancelar_pedido(request, id):
         pedido.status = OrderStatus.REJECTED
         pedido.rejection_reason = 'Cancelado por el propietario de la tienda'
         pedido.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+        AuditLog.objects.create(
+            user=request.user,
+            action='order_cancelled',
+            entity_type='Order',
+            entity_id=str(pedido.id),
+            previous_status=OrderStatus.PENDING,
+            new_status=OrderStatus.REJECTED,
+            details={'rejection_reason': pedido.rejection_reason},
+        )
         messages.success(request, 'Pedido cancelado.')
     return redirect('ver_pedido', id=id)
 
@@ -159,15 +173,42 @@ def aceptar_pedido(request, id):
                 # empty, so the order stays PENDING (NFR-03.2, UC-11 Alt A1).
                 for error in errores:
                     messages.error(request, error)
+                AuditLog.objects.create(
+                    user=request.user,
+                    action='order_accept_failed',
+                    entity_type='Order',
+                    entity_id=str(pedido.id),
+                    details={'errors': errores},
+                )
                 return redirect('ver_pedido', id=id)
 
+            deducciones = []
             for item in items:
                 inv = inventarios[item.product_id]
                 inv.quantity -= item.quantity
                 inv.save(update_fields=['quantity'])
+                deducciones.append({
+                    'product': item.product.name,
+                    'quantity_deducted': item.quantity,
+                    'remaining_stock': inv.quantity,
+                })
 
             pedido.status = OrderStatus.ACCEPTED
             pedido.save(update_fields=['status', 'updated_at'])
+            AuditLog.objects.create(
+                user=request.user,
+                action='order_accepted',
+                entity_type='Order',
+                entity_id=str(pedido.id),
+                previous_status=OrderStatus.PENDING,
+                new_status=OrderStatus.ACCEPTED,
+                details={'inventory_deductions': deducciones},
+            )
+            Notification.objects.create(
+                user=pedido.store.owner,
+                order=pedido,
+                message=f'Tu pedido #{pedido.id} fue aceptado.',
+            )
 
         messages.success(request, 'Pedido aceptado — inventario actualizado.')
     return redirect('ver_pedido', id=id)
@@ -180,6 +221,23 @@ def rechazar_pedido(request, id):
         pedido.status = OrderStatus.REJECTED
         pedido.rejection_reason = request.POST.get('rejection_reason', '').strip()[:500]
         pedido.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+        AuditLog.objects.create(
+            user=request.user,
+            action='order_rejected',
+            entity_type='Order',
+            entity_id=str(pedido.id),
+            previous_status=OrderStatus.PENDING,
+            new_status=OrderStatus.REJECTED,
+            details={'rejection_reason': pedido.rejection_reason},
+        )
+        Notification.objects.create(
+            user=pedido.store.owner,
+            order=pedido,
+            message=(
+                f'Tu pedido #{pedido.id} fue rechazado.'
+                + (f' Motivo: {pedido.rejection_reason}' if pedido.rejection_reason else '')
+            ),
+        )
         messages.success(request, 'Pedido rechazado.')
         return redirect('ver_pedido', id=id)
     return render(request, 'orders/rechazar_pedido.html', {'pedido': pedido})
@@ -191,6 +249,19 @@ def despachar_pedido(request, id):
     if request.method == 'POST':
         pedido.status = OrderStatus.DISPATCHED
         pedido.save(update_fields=['status', 'updated_at'])
+        AuditLog.objects.create(
+            user=request.user,
+            action='order_dispatched',
+            entity_type='Order',
+            entity_id=str(pedido.id),
+            previous_status=OrderStatus.ACCEPTED,
+            new_status=OrderStatus.DISPATCHED,
+        )
+        Notification.objects.create(
+            user=pedido.store.owner,
+            order=pedido,
+            message=f'Tu pedido #{pedido.id} fue despachado.',
+        )
         messages.success(request, 'Pedido marcado como despachado.')
     return redirect('ver_pedido', id=id)
 
@@ -304,6 +375,7 @@ def pending_orders_api(request):
     pedidos = (
         Order.objects.filter(vendor=request.user, status=OrderStatus.PENDING)
         .select_related('store')
+        .annotate(item_count=Count('items'))  # avoids one COUNT query per order
         .order_by('created_at')
     )
     return JsonResponse({
@@ -312,7 +384,7 @@ def pending_orders_api(request):
                 'id': p.id,
                 'store': p.store.name,
                 'created_at': p.created_at.isoformat(),
-                'item_count': p.items.count(),
+                'item_count': p.item_count,
                 'url': f'/orders/{p.id}/',
             }
             for p in pedidos

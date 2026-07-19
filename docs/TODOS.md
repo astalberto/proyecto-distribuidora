@@ -111,28 +111,54 @@ truth for delivery correctness.
 - **Known gap, not closed:** issue resolution is notes-only — no inventory
   adjustment, partial fulfillment, or redelivery tracking (see Tier 4).
 
-## Tier 3 — Delivery, audit, dashboard (Sprints 2 & 4)
+## Tier 3 — Delivery, audit, dashboard (Sprints 2 & 4) — DONE 2026-07-19
 
 - [x] ~~Cloudinary upload preset + server-side `public_id` validation~~ —
       **superseded by DR-09**, not implemented: photo proof is dropped from scope
       entirely, not just the Cloudinary SDK piece.
-- [ ] `AuditLog` writes on the *original* accept/reject/dispatch transitions and
-      inventory deduction — the newer `confirmar_recepcion`/`resolver_incidencia`
-      transitions (DR-09) already write `AuditLog` entries; this item is now
-      specifically about backfilling the older transitions.
-- [ ] Distributor operations dashboard (orders + inventory overview, FR-08.1/08.3).
-- [ ] `select_related`/`prefetch_related` pass + DB indexes on `Order(vendor, status)`
-      and `Order(store)`.
+- [x] `AuditLog` writes backfilled onto `aceptar_pedido` (+ per-item deduction detail
+      and an `order_accept_failed` entry on insufficient stock, FR-09.3),
+      `rechazar_pedido`, `despachar_pedido`, `cancelar_pedido`, and
+      `deliveries.crear_confirmacion`'s `DELIVERED` transition. Every order status
+      transition now has an audit entry, matching the DR-09 transitions that already
+      had one.
+- [x] Distributor operations dashboard (`accounts/dashboard.html`,
+      `/accounts/dashboard/`) — orders grouped by status, 20 most recent orders,
+      inventory per product per vendor with a low-stock row highlight (FR-08.1,
+      FR-08.3). Linked from the nav for `DISTRIBUTOR` users only.
+- [x] `Order` gained a composite index on `(vendor, status)` and one on `store`
+      (NFR-02.6, migration `orders/0004_...`). Fixed N+1s (NFR-02.5) across every
+      list view that joins related data: `orders/` index/detail (store, vendor),
+      `pending_orders_api` (item count was one `COUNT` query per order, now a single
+      `annotate`), `catalog/index.html` (store/product/inventory joins),
+      `deliveries/index.html` (order, delivery_user), `audit/index.html` (user).
+- Bonus fix found along the way: `deliveries/index.html`'s "Foto ID (Cloudinary)"
+  column header was stale after DR-09 — relabeled "Foto ID (opcional, sin validar)".
+- Verified via `manage.py check`, `makemigrations --check`, and `manage.py migrate`.
 
-## Tier 4 — Secondary features (Sprint 5)
+## Tier 4 — Secondary features (Sprint 5) — DONE 2026-07-19
 
-- [ ] Notifications — `Notification` writes now exist for the DR-09 transitions
-      (delivered / issue-reported / issue-resolved / confirmed); still need: writes
-      on the original accept/reject/dispatch transitions, an unread-count display,
-      and mark-as-read UI. No UI reads `Notification` at all yet.
-- [ ] Dashboard filters (date range, vendor, store, status) + summary metrics (total
-      orders, fulfilled, rejected, avg fulfillment time).
-- [ ] Low-stock alert badge using `Product.low_stock_threshold`.
+- [x] Notifications — writes added on `aceptar_pedido`/`rechazar_pedido`/
+      `despachar_pedido` (the DR-09 transitions and `deliveries.crear_confirmacion`
+      already had them; `cancelar_pedido` deliberately doesn't notify — it's the
+      store owner's own action, no FR-10 sub-item covers it). Unread count via a new
+      `accounts.context_processors.notifications` context processor, shown in the nav
+      for any authenticated role (not just `STORE_OWNER` — `VENDOR`/`DELIVERY` get
+      DR-09 notifications too). New `/accounts/notifications/` list page with
+      mark-as-read / mark-all-read.
+- [x] Dashboard filters (date range, vendor, store, status) + summary metrics (total,
+      fulfilled = `CONFIRMED`, rejected, avg fulfillment time) — all on
+      `/accounts/dashboard/` via GET params, filters apply to both the order list and
+      the metrics.
+- [x] Low-stock alert badge — summary banner on the dashboard + the existing
+      per-row highlight, now with the same ⚠ text marker `catalog/index.html`
+      already had (the dashboard's inventory table only had the CSS highlight
+      before this pass).
+- Verified via `manage.py check` and a test-client smoke test: notification created +
+  correct message on accept, unread count shown in the nav, notifications list page,
+  mark-as-read flips `is_read`, dashboard filters (vendor/status combos) correctly
+  include/exclude orders, low-stock banner appears once inventory drops below
+  threshold.
 
 ## Tier 5 — Hardening & ship (Sprint 6)
 

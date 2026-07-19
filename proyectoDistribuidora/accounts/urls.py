@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('dashboard/', views.dashboard, name='distributor_dashboard'),
     path('users/', views.index, name='index_accounts'),
     path('distributors/<int:id>/', views.obtener_distribuidor, name='obtener_distribuidor'),
     path('distributors/new/', views.crear_distribuidor, name='crear_distribuidor'),
@@ -14,4 +15,7 @@ urlpatterns = [
     path('password-reset/<str:token>/', views.confirmar_reset_password, name='confirmar_reset_password'),
     path('invite-token/regenerate/', views.regenerar_invite_token, name='regenerar_invite_token'),
     path('join/<str:token>/', views.registrar_tienda, name='registrar_tienda'),
+    path('notifications/', views.notificaciones, name='notificaciones'),
+    path('notifications/<int:id>/read/', views.marcar_notificacion_leida, name='marcar_notificacion_leida'),
+    path('notifications/read-all/', views.marcar_todas_leidas, name='marcar_todas_leidas'),
 ]

@@ -1,10 +1,15 @@
 # UX Navigation Flows & Conceptual Wireframes
 # ISBER Solutions Distribution Platform
 
-**Author:** UX/Product Design  
-**Based on:** `docs/requirements.md`  
-**Last updated:** 2026-07-01  
+**Author:** UX/Product Design
+**Based on:** `docs/requirements.md` (business rules) + the actual running code as of 2026-07-19
+**Design tokens:** see [`DESIGN.md`](DESIGN.md) (brand colors, typography, logo assets — not yet applied to the app)
+**Last updated:** 2026-07-19
 **Roles in scope:** DISTRIBUTOR · VENDOR · STORE_OWNER · DELIVERY
+
+> **This revision replaces the original pre-implementation draft (2026-07-01).** That draft described an aspirational UI (multi-step wizards, JS modals, stat cards, Cloudinary photo gating) written before any of it was built. The actual app is plain server-rendered Django templates with `<table border="1">` layouts, browser `confirm()` dialogs instead of modals, and no client-side framework. Every flow and wireframe below is corrected to match what's actually running; the original aspirational design is preserved as **🔮 Future Upgrade** call-outs so the vision isn't lost, just clearly labeled as not-yet-built.
+>
+> **Naming note:** this document (like the rest of the codebase) says "ISBER Solutions." The brand/logo assets say "ISBEN SOLUTION." See `DESIGN.md` for the unresolved discrepancy.
 
 ---
 
@@ -16,6 +21,8 @@
 4. [STORE_OWNER Flows](#4-store_owner-flows)
 5. [DELIVERY Flows](#5-delivery-flows)
 6. [Conceptual Wireframes](#6-conceptual-wireframes)
+7. [Appendix: Screen Inventory](#appendix-screen-inventory)
+8. [Appendix B: Implementation Status](#appendix-b-implementation-status)
 
 ---
 
@@ -23,61 +30,100 @@
 
 ### 1.1 Login Flow (UC-01 · US-01 · FR-01.1, FR-01.2)
 
-```
-[/] Root URL
-  └─► Redirect → [/accounts/login/]
+Implemented with Django's built-in auth views, not a custom one — `registration/login.html` is the template.
 
-[Screen: Login]
+```
+[/] Root URL → [Screen: Home] (public link list, not role-gated — see 1.5)
+
+[/login/] Login (django.contrib.auth.views.LoginView)
   ├─► Valid credentials
-  │     └─► POST /accounts/login/
-  │           ├─► role = DISTRIBUTOR  → [/catalog/dashboard/]
-  │           ├─► role = VENDOR       → [/orders/vendor-dashboard/]
-  │           ├─► role = STORE_OWNER  → [/orders/store-dashboard/]
-  │           └─► role = DELIVERY     → [/deliveries/queue/]
+  │     └─► POST /login/ → LOGIN_REDIRECT_URL = 'home' for EVERY role
+  │           (🔮 Future Upgrade: role-based redirect straight to each
+  │            role's dashboard/queue, instead of the shared home list)
   │
-  └─► Invalid credentials (wrong password OR email not found)
-        └─► [Screen: Login] — inline generic error banner (no enumeration)
+  └─► Invalid credentials
+        └─► [Screen: Login] — "Correo o contraseña incorrectos. Intenta de nuevo."
 ```
 
 ### 1.2 Logout Flow (UC-02 · US-02 · FR-01.5)
 
 ```
-[Any authenticated screen] → "Cerrar sesión" link (global nav)
-  └─► POST /accounts/logout/
-        └─► Session destroyed → [Screen: Login]
+[Any authenticated screen] → "Cerrar sesión" button (nav, POST form)
+  └─► POST /logout/ → Session destroyed → [Screen: Home] (LOGOUT_REDIRECT_URL='home')
 
 [Any protected route after logout]
-  └─► 302 Redirect → [Screen: Login]
+  └─► role_required redirects unauthenticated users → [Screen: Login]
 ```
 
 ### 1.3 Password Reset Flow (UC-03 · US-03 · FR-01.3, FR-01.4, FR-01.6)
 
+Matches the original design closely — custom-built on the `PasswordResetToken` model (not Django's built-in reset flow).
+
 ```
 [Screen: Login] → "¿Olvidaste tu contraseña?" link
-  └─► [Screen: Password Reset — Request]
-        ├─► Email exists in DB
-        │     └─► Token generated (1h TTL, single-use)
-        │           └─► Email dispatched via Resend SMTP
-        │                 └─► [Screen: Login] — silent success message
-        │
-        └─► Email NOT found
-              └─► [Screen: Login] — same silent success message (no enumeration)
+  └─► [/accounts/password-reset/] Screen: Password Reset — Request
+        ├─► Email exists → token created (1h TTL, secrets.token_urlsafe),
+        │     email sent via console backend (⚠ not Resend SMTP yet — see below)
+        │     └─► [Screen: "Enlace enviado"] — same message either way
+        └─► Email not found → same message (no enumeration)
 
-[User clicks link in email] → /accounts/password-reset/<token>/
-  ├─► Token valid (not used, not expired)
-  │     └─► [Screen: Set New Password]
-  │           ├─► Passwords match & meet rules
-  │           │     └─► POST → token marked used → [Screen: Login] — success banner
-  │           └─► Validation error
-  │                 └─► [Screen: Set New Password] — inline field error
-  │
-  ├─► Token already used
-  │     └─► [Screen: Token Error] — "este enlace ya fue utilizado"
-  │
-  └─► Token expired
-        └─► [Screen: Token Error] — "el enlace ha expirado, solicita uno nuevo"
-              └─► Link → [Screen: Password Reset — Request]
+[/accounts/password-reset/<token>/]
+  ├─► Token valid → [Screen: Set New Password] → POST → token marked used
+  │     → [Screen: Login]
+  ├─► Token already used → [Screen: "Enlace inválido"] — "este enlace ya fue utilizado"
+  └─► Token expired → [Screen: "Enlace inválido"] — "el enlace ha expirado..."
+        → link back to Request screen
 ```
+
+⚠ **Email backend is `console`, not Resend SMTP** — `settings.EMAIL_BACKEND` prints the reset email to the server log instead of actually sending it. Swapping in real Resend credentials is a deploy-config task (Tier 5), not a UX change.
+
+### 1.4 DISTRIBUTOR Onboarding — NEW, not in the original draft (DR-08)
+
+The original draft had no self-service path for creating a `Distributor` at all. The actual flow is superuser-gated (this deployment serves one real client, not a public multi-tenant signup funnel) but combines company + first admin creation into one step:
+
+```
+[Django superuser, via /admin/ or knowing the URL directly]
+  └─► [/accounts/distributors/new/] Screen: Crear Distribuidor
+        Fields: distributor_name, distributor_email, admin_email,
+                admin_password1, admin_password2
+        └─► POST → Distributor + first DISTRIBUTOR user created atomically
+              └─► [Screen: accounts index] (as the superuser, not logged in as the new admin)
+```
+
+(🔮 Future Upgrade: this whole flow currently has no discoverable entry point in the authenticated UI at all — a superuser has to know the URL or use `/admin/`. A small "platform admin" landing page listing existing distributors + a "create new" button would close that.)
+
+### 1.5 STORE_OWNER Self-Registration via Invite Link — NEW, not in the original draft (DR-08)
+
+Designed specifically for non-technical store owners: no signup form to discover, no distributor to pick from a list — the distributor shares a link (WhatsApp, printed QR code) that already knows which tenant it belongs to.
+
+```
+[DISTRIBUTOR's own dashboard] → "Enlace de registro para dueños de tienda" box
+  shows: https://.../accounts/join/<opaque-token>/
+  + "Generar nuevo enlace" button (revokes the old one, issues a new token)
+
+[Store owner taps/scans the link] → [/accounts/join/<token>/]
+  ├─► Token matches a Distributor → [Screen: Registrar mi tienda]
+  │     Fields: owner_email, owner_password1/2, store_name, store_address, store_phone
+  │     └─► POST → User(role=STORE_OWNER) + Store created atomically,
+  │           auto-logged-in → [Screen: Home]
+  │           (Store starts with NO vendor assigned — DR-01's existing
+  │           "no tienes vendedor asignado" message covers this until the
+  │           distributor assigns one)
+  │
+  └─► Token doesn't match any Distributor (bogus/expired link) → 404
+```
+
+(🔮 Future Upgrade: an actual rendered QR code image on the distributor dashboard, not just the raw URL as text — the distributor currently has to generate one themselves with an external tool to print it.)
+
+### 1.6 Home Screen — shared landing page (not role-gated)
+
+```
+[/] for any authenticated user, regardless of role
+  └─► Plain link list: Usuarios · Catálogo · Pedidos · Entregas ·
+        Auditoría · Django Admin
+```
+
+⚠ This list is **not filtered by role** — a VENDOR sees a "Catálogo" link they'll get a 403 on if clicked (that view is `role_required('DISTRIBUTOR')`). The nav bar (all screens) has the same issue for a few items. (🔮 Future Upgrade: role-scoped home/nav, or redirect straight past this page per role — see 1.1.)
 
 ---
 
@@ -85,171 +131,149 @@
 
 ### 2.1 User Management (US-24 · FR-02.1)
 
+Different from the original draft's single "create user with a role dropdown" — the role is fixed by which page you're on, to prevent picking the wrong one by mistake (DR-07).
+
 ```
-[Distributor Dashboard]
-  └─► "Usuarios" nav item → [Screen: User List]
-        ├─► "Nuevo Usuario" button → [Screen: Create User Form]
-        │     ├─► Valid submit → User created → [Screen: User List] + success toast
-        │     ├─► Validation error → [Screen: Create User Form] — inline errors
-        │     └─► "Cancelar" → [Screen: User List]
-        │
-        └─► Row action "Editar" → [Screen: Edit User Form]
-              ├─► Role / active status changed → [Screen: User List] + success toast
-              └─► "Cancelar" → [Screen: User List]
+[/accounts/users/] Screen: Usuarios — {distributor name}
+  ├─► "+ Admin Distribuidor" / "+ Vendedor" / "+ Dueño de Tienda" / "+ Repartidor"
+  │     → [/accounts/users/new/<role>/] — role fixed by the link clicked,
+  │       no dropdown; email + password only
+  │       └─► Valid submit → [Screen: Usuarios]
+  │
+  └─► Row "Editar" → [/accounts/users/<id>/edit/]
+        Fields: email, role (dropdown — can reassign role after creation), is_active
+        (distributor is NOT editable here — reassigning a user to a
+        different tenant is not something this screen allows)
 ```
 
 ### 2.2 Product Catalog (UC-04 · US-04, US-05, US-06 · FR-03.1–FR-03.4)
 
+Matches the original draft closely, one combined list page instead of a dedicated dashboard route.
+
 ```
-[Distributor Dashboard]
-  └─► "Catálogo" nav item → [Screen: Product List]
-        ├─► "Nuevo Producto" button → [Screen: Create Product Form]
-        │     ├─► Valid submit → Product saved → [Screen: Product List] + success toast
-        │     └─► Validation error → inline field errors; product NOT saved
-        │
-        ├─► Row action "Editar" → [Screen: Edit Product Form]
-        │     ├─► Valid submit → Product updated → [Screen: Product List] + toast
-        │     └─► Validation error → inline field errors
-        │
-        ├─► Row action "Desactivar" (is_active=True)
-        │     └─► Confirmation modal → confirm
-        │           └─► is_active set to False → row badge changes to "Inactivo"
-        │                 (AuditLog entry written)
-        │
-        └─► Row action "Reactivar" (is_active=False)
-              └─► is_active set to True → row badge changes to "Activo"
-                    (AuditLog entry written)
+[/catalog/] Screen: Catálogo (Tiendas + Productos + Inventario, all on one page)
+  └─► Productos section
+        ├─► "+ Nuevo Producto" → [/catalog/products/new/] → save → back to [/catalog/]
+        ├─► Row "Editar" → [/catalog/products/<id>/edit/]
+        ├─► Row "Desactivar" (is_active=True → False, DR-06 soft-delete,
+        │     no confirmation dialog currently — 🔮 Future Upgrade: add one,
+        │     matching NFR-04.6's "critical actions need confirmation")
+        └─► Row "Reactivar" (is_active=False → True)
 ```
 
 ### 2.3 Vendor Inventory Assignment (UC-05 · US-07 · FR-03.5, FR-04.1)
 
 ```
-[Distributor Dashboard]
-  └─► "Inventario" nav item → [Screen: Inventory Overview]
-        └─► "Asignar Stock" button → [Screen: Assign Inventory Form]
-              ├─► Select vendor (dropdown) + product (dropdown) + quantity (number)
-              ├─► Valid submit (qty ≥ 0)
-              │     └─► VendorInventory upserted → [Screen: Inventory Overview] + toast
-              ├─► qty = 0 → product removed from vendor inventory (confirm modal)
-              └─► qty < 0 → inline validation error; NOT submitted
+[/catalog/] → Inventario section → link to /catalog/inventory/assign/<vendor_id>/
+  (vendor_id must be looked up from the Usuarios page first — no vendor
+  picker on this screen itself; 🔮 Future Upgrade: a vendor dropdown here
+  instead of requiring the distributor to already know the ID)
+  └─► Select product (dropdown) + quantity → save → VendorInventory upserted
+        → back to [/catalog/]
 ```
 
 ### 2.4 Store Management
 
 ```
-[Distributor Dashboard]
-  └─► "Tiendas" nav item → [Screen: Store List]
-        ├─► "Nueva Tienda" button → [Screen: Create Store Form]
-        │     └─► Valid submit → Store created → [Screen: Store List] + toast
-        │
-        └─► Row action "Editar" → [Screen: Edit Store Form]
-              ├─► Assign/change vendor (dropdown — nullable, per DR-01)
-              └─► Valid submit → [Screen: Store List] + toast
+[/catalog/] → Tiendas section
+  ├─► "+ Nueva Tienda" → [/catalog/stores/new/]
+  │     Fields: name, address, phone_number, owner (dropdown, own tenant only),
+  │     vendor (dropdown, own tenant only, nullable per DR-01)
+  └─► Row "Editar" → [/catalog/stores/<id>/edit/]
 ```
 
-### 2.5 Operations Dashboard (UC-06 · US-08 · FR-08.1, FR-08.3)
+### 2.5 Operations Dashboard (UC-06 · US-08 · FR-08.1–FR-08.4)
+
+The one screen that's actually *more* built out than the original draft envisioned — filters and summary metrics were added in the same pass.
 
 ```
-[Distributor Dashboard]
-  └─► "Dashboard" nav item → [Screen: Operations Dashboard]
-        ├─► Orders table (grouped by status: PENDING / ACCEPTED /
-        │   DISPATCHED / DELIVERED / REJECTED)
-        │     └─► Row click → [Screen: Order Detail (Distributor view)]
-        │                       └─► "Ver Auditoría" → [Screen: Audit Log (Order)]
-        │
-        ├─► Inventory grid (product × vendor matrix with low-stock badges)
-        │     └─► Low-stock alert badge visible when qty < low_stock_threshold
-        │
-        └─► Filters panel (FR-08.2)
-              ├─► Date range picker
-              ├─► Vendor dropdown
-              ├─► Store dropdown
-              └─► Status multi-select → "Aplicar filtros" → table refreshes
+[/accounts/dashboard/] Screen: Dashboard — {distributor name}
+  ├─► Low-stock banner (if any VendorInventory row < threshold) — "⚠ N producto(s) con stock bajo"
+  ├─► Filters form (GET params): date_from, date_to, vendor, store, status
+  │     → "Filtrar" reloads the page with filtered results applied to
+  │       BOTH the order list and the metrics below
+  ├─► Summary metrics table: total pedidos · cumplidos (CONFIRMED) ·
+  │     rechazados · tiempo promedio de cumplimiento
+  ├─► Pedidos por estado (grouped counts)
+  ├─► Pedidos (up to 50, newest first) — row links to order detail
+  └─► Inventario por vendedor — low-stock rows highlighted + "⚠ Stock bajo" text
 ```
+
+(🔮 Future Upgrade: the original draft's clickable summary stat-cards that pre-filter the table on click — currently the filters are a separate form, not wired to the metrics cards.)
 
 ### 2.6 Audit Log Consultation (UC-07 · US-09 · FR-09.5)
 
 ```
-[Screen: Order Detail (Distributor view)]
-  └─► "Ver Auditoría" button → [Screen: Audit Log (Order)]
-        └─► Chronological list of events
-              (timestamp · actor name + role · action · prev_status → new_status)
-              (append-only — no delete/edit controls shown)
+[/audit/] Screen: Registro de Auditoría — DISTRIBUTOR only, own-tenant entries only
+  Chronological table: timestamp · actor · action · previous_status → new_status · details (raw JSON)
+  Read-only, append-only, no delete/edit controls
 ```
+
+⚠ This is a standalone page (`/audit/`), not reached via a "Ver Auditoría" button from an order detail page as the original draft envisioned — there's currently no link from `ver_pedido.html` to the filtered audit trail for that specific order. (🔮 Future Upgrade: add that link, and render `details` as formatted key/value pairs instead of raw JSON.)
 
 ---
 
 ## 3. VENDOR Flows
 
-### 3.1 Vendor Dashboard — Pending Orders (UC-10 · US-10 · FR-06.1, FR-06.6, FR-10.1)
+### 3.1 Vendor Order List + Polling (UC-10 · US-10 · FR-06.1, FR-06.6, FR-10.1)
 
 ```
-[Screen: Vendor Dashboard]
-  ├─► JS polls GET /api/orders/pending/ every 30 s
-  │     └─► New order arrives → row appended to table without page reload
-  │
-  └─► Row click on pending order → [Screen: Order Detail (Vendor)]
+[/orders/] Screen: Pedidos (shared template across all 3 order-visible roles;
+  VENDOR sees only orders where vendor = self)
+  └─► JS polls GET /api/orders/pending/ every 30s
+        └─► New PENDING order → row prepended to the table, no page reload
+              (no toast/sound — just the new row appearing, plus a text
+              status line "N pedido(s) nuevo(s).")
 ```
 
 ### 3.2 Accept Order (UC-11 · US-11 · FR-04.3, FR-04.4, FR-06.2–FR-06.4)
 
 ```
-[Screen: Order Detail (Vendor)] — order in PENDING status
-  └─► "Aceptar" button
-        └─► Confirmation modal: "¿Confirmar aceptación?"
-              ├─► Confirm → POST /orders/<id>/accept/
-              │     ├─► Stock sufficient (atomic transaction)
-              │     │     └─► Inventory deducted · Status → ACCEPTED
-              │     │           AuditLog written · Notification to store owner
-              │     │           └─► [Screen: Vendor Dashboard] + success toast
-              │     │
-              │     └─► Insufficient stock (transaction rolled back)
-              │           └─► [Screen: Order Detail (Vendor)] — per-item error banner
-              │                 Order remains PENDING
-              │
-              └─► Cancel modal → [Screen: Order Detail (Vendor)] — no change
+[/orders/<id>/] Order detail — status = PENDING, viewer = assigned vendor
+  └─► "Aceptar" button (POST form, browser confirm() dialog — not a styled
+        modal)
+        ├─► Stock sufficient (transaction.atomic + select_for_update)
+        │     → inventory deducted · status → ACCEPTED
+        │       AuditLog + Notification to store owner written
+        │       → same detail page, success message banner
+        └─► Insufficient stock → nothing written, order stays PENDING
+              → per-item error message banner ("Arroz: disponible 3, solicitado 5")
+              AuditLog entry written too (order_accept_failed, FR-09.3)
 ```
 
 ### 3.3 Reject Order (UC-12 · US-12 · FR-06.2, FR-06.4)
 
 ```
-[Screen: Order Detail (Vendor)] — order in PENDING status
-  └─► "Rechazar" button
-        └─► [Modal: Reject Confirmation]
-              ├─► Optional: textarea "Motivo del rechazo" (max 500 chars)
-              ├─► Confirm → POST /orders/<id>/reject/
-              │     └─► Status → REJECTED
-              │           AuditLog written (prev=PENDING, new=REJECTED)
-              │           Notification to store owner (with reason if provided)
-              │           └─► [Screen: Vendor Dashboard] + toast
-              │
-              └─► Cancel → modal closes → [Screen: Order Detail (Vendor)]
+[/orders/<id>/] — status = PENDING
+  └─► "Rechazar" button → [/orders/<id>/reject/] Screen: Rechazar Pedido
+        Optional textarea, max 500 chars, browser confirm() on submit
+        └─► POST → status → REJECTED, AuditLog + Notification (with reason
+              if provided) → back to order detail
 ```
 
 ### 3.4 Dispatch Order (UC-13 · US-13 · FR-06.5)
 
 ```
-[Screen: Order Detail (Vendor)] — order in ACCEPTED status
-  └─► "Marcar como Despachado" button
-        └─► Confirmation modal: "¿Confirmar despacho?"
-              ├─► Confirm → POST /orders/<id>/dispatch/
-              │     └─► Status → DISPATCHED
-              │           AuditLog written
-              │           Notification to store owner
-              │           Order now visible in delivery queue
-              │           └─► [Screen: Vendor Dashboard] + toast
-              │
-              └─► Cancel → modal closes
+[/orders/<id>/] — status = ACCEPTED
+  └─► "Marcar como despachado" button (POST form, confirm())
+        → status → DISPATCHED, AuditLog + Notification → same page
 ```
 
-### 3.5 Vendor Inventory View (UC-09 · FR-04.2)
+### 3.5 Resolve a Delivery Issue — NEW, not in the original draft (DR-09)
 
 ```
-[Screen: Vendor Dashboard]
-  └─► "Mi Inventario" nav item → [Screen: Vendor Inventory]
-        └─► Read-only table: product name · assigned quantity
-              (only own inventory; other vendors' data never visible)
+[/orders/<id>/] — status = DELIVERY_ISSUE, viewer = assigned vendor
+  └─► "Resolver incidencia" → [/orders/<id>/resolve-issue/]
+        Shows the store owner's issue_description (read-only)
+        Textarea: resolution_notes (required)
+        └─► POST → status → CONFIRMED, AuditLog + Notification to store owner
 ```
+
+### 3.6 Vendor Inventory View — ⚠ NOT IMPLEMENTED (UC-09 · FR-04.2)
+
+The original draft's "Mi Inventario" screen (a vendor browsing their own stock levels) **was never built.** There is no route under `orders/` or `catalog/` a `VENDOR` can reach to see their own `VendorInventory` rows — `catalog/` is entirely `role_required('DISTRIBUTOR')`. The only place vendor stock is currently visible to a vendor is indirectly, inside the per-item error message when an accept fails from insufficient stock.
+
+(🔮 Future Upgrade: a read-only `VendorInventory.objects.filter(vendor=request.user)` list, e.g. at `/orders/inventory/` or `/catalog/my-inventory/`. This closes UC-09, which UC-11 formally `«include»`s — right now that inclusion is honored functionally, at accept time, just with no dedicated browsing screen.)
 
 ---
 
@@ -257,1107 +281,643 @@
 
 ### 4.1 Place Order (UC-14 · US-14 · FR-05.1, FR-05.3, FR-05.4 · DR-01)
 
+**Materially simpler than the original draft's 3-step wizard.** No step indicator, no store-selection step (a store owner picks their store via a single dropdown, not a radio-list sub-screen), no review-then-confirm step — items are added one at a time to an already-created PENDING order.
+
 ```
-[Screen: Store Owner Dashboard]
-  └─► "Nuevo Pedido" button
-        │
-        ├─► Store has NO vendor assigned (DR-01 edge case)
-        │     └─► Button is DISABLED — tooltip/message:
-        │           "Tu tienda no tiene un vendedor asignado. Contacta al distribuidor."
-        │
-        └─► Store HAS vendor assigned
-              │
-              ├─► Store owner belongs to MULTIPLE stores
-              │     └─► [Step 0: Select Store] — radio list of stores
-              │           └─► "Continuar" → [Step 1: Select Products]
-              │
-              └─► Store owner belongs to SINGLE store
-                    └─► [Step 1: Select Products]
-                          └─► Product grid (only vendor's active inventory shown)
-                                Each row: product name · unit price · quantity stepper (min 1)
-                                ├─► qty = 0 for any item → "Continuar" stays disabled
-                                └─► At least 1 item with qty ≥ 1 → "Continuar" enabled
-                                      └─► [Step 2: Review Order]
-                                            ├─► Table: product · qty · price per unit · subtotal
-                                            ├─► Order total
-                                            ├─► "Editar" → back to [Step 1]
-                                            └─► "Confirmar Pedido" button
-                                                  └─► POST /orders/
-                                                        ├─► All products available
-                                                        │     └─► Order created (PENDING)
-                                                        │           unitPriceAtTime captured
-                                                        │           └─► [Step 3: Confirmation]
-                                                        │                 "Tu pedido fue enviado."
-                                                        │                 "Número de pedido: #XXXX"
-                                                        │                 → "Ver mis pedidos" link
-                                                        │
-                                                        └─► Product(s) not in vendor inventory
-                                                              └─► [Step 2] — per-item error banner
-                                                                    Order NOT created
+[/orders/new/] Screen: Crear Pedido — STORE_OWNER only
+  Field: store (dropdown, scoped to stores owned by this user)
+  ├─► Store has no vendor assigned → error shown inline on submit:
+  │     "Esta tienda no tiene un vendedor asignado. Contacta al distribuidor."
+  └─► Store has a vendor → POST creates Order(status=PENDING, vendor=store.vendor)
+        → redirects straight to [/orders/<id>/] (the new order's detail page)
+
+[/orders/<id>/] — status = PENDING → "+ Agregar Item" link
+  └─► [/orders/<order_id>/items/new/] Screen: Agregar Item
+        Fields: product (dropdown, scoped to what the assigned vendor
+        actually stocks — FR-05.3), quantity
+        └─► POST → unit_price_at_time snapshotted server-side from
+              Product.unit_price (never client-supplied, FR-05.4)
+              → back to order detail, item appears in the items table
+              → repeat "+ Agregar Item" for each product
+
+  Order stays PENDING, editable (items can be added/edited/removed) until
+  the store owner is done — there is no explicit "submit/confirm" step
+  beyond creating the order itself; it's visible to the vendor (and
+  poll-detected) from the moment it's created, even with zero items.
 ```
+
+(🔮 Future Upgrade — this is where the original draft's vision is genuinely better and worth building: a true 3-step wizard — select store → build the order with a quantity-stepper grid across all available products at once → review totals → confirm — rather than the current "create empty order, then add items one form-submit at a time." The current flow also means a vendor could see and even *accept* a zero-item order before the store owner finishes adding items, since nothing currently blocks acceptance based on item count reaching zero mid-edit — `aceptar_pedido` does check for at least one item, but a race where the store owner is still adding items while the vendor is looking at the order is possible. Worth a NOTES: not exploited in current tests but a real gap if traffic picks up.)
 
 ### 4.2 Track Order Status (UC-15 · US-15 · FR-05.5)
 
 ```
-[Screen: Store Owner Dashboard]
-  └─► "Mis Pedidos" nav item → [Screen: Order History]
-        └─► List of orders (newest first)
-              Each row: order # · date · status badge · store name
-              └─► Row click → [Screen: Order Detail (Store Owner)]
-                    ├─► Status: PENDING
-                    │     └─► "Cancelar pedido" button (US-23)
-                    │
-                    ├─► Status: REJECTED
-                    │     └─► "Reenviar pedido" button (US-22)
-                    │
-                    └─► Status: ACCEPTED / DISPATCHED / DELIVERED
-                          └─► Read-only detail view
+[/orders/] Screen: Pedidos — STORE_OWNER sees only their own stores' orders
+  Row click → [/orders/<id>/] full detail, including any issue-report/
+  resolution notes (see 4.4) and rejection reason
 ```
+
+No separate "Order History" screen from the original draft — `/orders/` serves this role for all three order-visible roles.
 
 ### 4.3 Cancel Pending Order (US-23)
 
 ```
-[Screen: Order Detail (Store Owner)] — status = PENDING
-  └─► "Cancelar pedido" button
-        └─► Confirmation modal: "¿Estás seguro? Esta acción no se puede deshacer."
-              ├─► Confirm → POST /orders/<id>/cancel/
-              │     └─► Status → REJECTED
-              │           rejection_reason = "Cancelado por el propietario de la tienda"
-              │           AuditLog written (prev=PENDING, new=REJECTED)
-              │           Inventory unchanged
-              │           └─► [Screen: Order History] + toast
-              │
-              └─► Cancel modal → no change
+[/orders/<id>/] — status = PENDING
+  └─► "Cancelar pedido" button (POST form, confirm())
+        → status → REJECTED, rejection_reason = "Cancelado por el
+          propietario de la tienda", AuditLog written
+          (no Notification — it's the store owner's own action, nobody
+          else needs telling)
 ```
 
-### 4.4 Resubmit Rejected Order (US-22)
+### 4.4 Confirm Receipt / Report a Delivery Issue — NEW, not in the original draft (DR-09)
+
+This entirely replaces the original draft's photo-upload-gated delivery confirmation (see §5.2) as the actual source of truth for "did this order arrive correctly." `DELIVERED` is **not terminal** — it's "the delivery person says they dropped it off; awaiting the store owner."
 
 ```
-[Screen: Order Detail (Store Owner)] — status = REJECTED
-  └─► "Reenviar pedido" button
-        └─► Confirmation modal: "Se creará un nuevo pedido con los mismos productos."
-              ├─► Confirm → POST /orders/<id>/resubmit/
-              │     └─► New Order created (PENDING)
-              │           previousOrderId → rejected order's ID
-              │           Items cloned with CURRENT catalog prices
-              │           Vendor from current store.vendor (may differ from original)
-              │           └─► [Screen: Order Detail (Store Owner)] — NEW order
-              │                 "Pedido reenviado. Número: #XXXX"
-              │
-              └─► Cancel modal → no change
+[/orders/<id>/] — status = DELIVERED
+  ├─► "Confirmar recepción" button (confirm()) → POST /orders/<id>/confirm-receipt/
+  │     → status → CONFIRMED, AuditLog + Notification to vendor
+  │
+  └─► "Reportar problema" link → [/orders/<id>/report-issue/]
+        Textarea: issue_description (required)
+        └─► POST → status → DELIVERY_ISSUE
+              Notification to vendor AND to the delivery person who
+              confirmed it (if one is on record)
+              → vendor later resolves it (see 3.5) → CONFIRMED
 ```
 
-### 4.5 Notifications (US-16 · FR-10.2–FR-10.4 · DR-03)
+### 4.5 Resubmit Rejected Order — ⚠ NOT IMPLEMENTED (US-22)
+
+`Order.previous_order` exists on the model (a self-FK meant to link a resubmission back to its rejected predecessor), but **nothing sets it** — there is no "Reenviar pedido" button or `/orders/<id>/resubmit/` route anywhere in the app. A store owner whose order was rejected has to start over with a brand-new, unlinked order via 4.1.
+
+(🔮 Future Upgrade: exactly as the original draft specified — a resubmit action that clones the rejected order's items at *current* catalog prices into a new `PENDING` order with `previous_order` set.)
+
+### 4.6 Notifications (US-16 · FR-10.2–FR-10.4)
+
+**Not STORE_OWNER-exclusive as the original draft assumed** — `VENDOR` and `DELIVERY` also receive notifications now (DR-09's issue-report/resolve flow notifies across roles). The nav item and unread count are visible to any authenticated role.
 
 ```
-[Any Store Owner screen]
-  └─► Notification bell icon (nav) — unread count badge (loaded on page load)
-        └─► Click → [Screen: Notification Center]
-              ├─► List: message · order reference · timestamp · read/unread indicator
-              └─► "Marcar como leída" action per notification (or "Marcar todas")
-                    └─► Notification.is_read = True → count badge decremented
+[Any authenticated screen] → nav: "Notificaciones (N)" — N = unread count,
+  loaded via a context processor on every page render, any role
+  └─► [/accounts/notifications/] Screen: Notificaciones
+        ├─► "Marcar todas como leídas" button
+        └─► Per-row "Marcar como leída" button (unread rows only)
+              Each row links to the related order, if any
 ```
 
 ---
 
 ## 5. DELIVERY Flows
 
-### 5.1 Dispatched Orders Queue (UC-16 · US-17 · FR-07.1)
+### 5.1 Confirmations Screen — different in kind from the original draft (UC-16 · US-17 · FR-07.1)
+
+The original draft's "Cola de Entregas" was a queue of `DISPATCHED` orders awaiting pickup, with a click-through to a per-order confirm screen. **What's actually built is the reverse**: a log of *already-made* confirmations, and a separate, order-list-free "make a new confirmation" form.
 
 ```
-[Screen: Delivery Dashboard / Queue]
-  └─► List of all DISPATCHED orders (same-distributor, first-come-first-served, DR-02)
-        Each row: store name · store address · product summary · order date
-        └─► Row click → [Screen: Delivery Order Detail]
+[/deliveries/queue/] Screen: Cola de Entregas
+  Table of EXISTING DeliveryConfirmation rows (order · repartidor · foto ID
+  opcional · fecha), own-distributor scope
+  → "+ Confirmar Entrega" link (does not require browsing this list first)
 ```
 
-### 5.2 Confirm Delivery with Photo (UC-17 · US-18 · FR-07.2–FR-07.5)
+(🔮 Future Upgrade: this is the clearest remaining gap from the original design intent — rename/restructure so `/deliveries/queue/` actually shows *pending* `DISPATCHED` orders (store name, address, product summary, per UC-16's spec) with a "Confirmar" action per row, and keep the confirmation log as a separate "Historial" screen.)
+
+### 5.2 Confirm Delivery — Cloudinary photo validation superseded by DR-09 (UC-17 · US-18 · FR-07.2–FR-07.5)
 
 ```
-[Screen: Delivery Order Detail] — order in DISPATCHED status
-  └─► "Confirmar Entrega" button
-        └─► [Screen: Delivery Confirmation Form]
-              │
-              ├─► Step A: Photo upload widget (browser-direct to Cloudinary upload preset)
-              │     ├─► No photo uploaded → "Confirmar" button is DISABLED
-              │     └─► Photo uploaded → Cloudinary returns public_id
-              │                           → public_id stored in hidden field
-              │                           → "Confirmar" button ENABLED
-              │
-              └─► Step B: Submit form
-                    └─► POST /deliveries/<id>/confirm/  { public_id: "..." }
-                          ├─► public_id valid (Cloudinary SDK verifies origin)
-                          │     └─► DeliveryConfirmation record created
-                          │           Status → DELIVERED
-                          │           AuditLog written
-                          │           └─► [Screen: Delivery Dashboard] + success toast
-                          │
-                          └─► public_id invalid / externally supplied
-                                └─► [Screen: Delivery Confirmation Form]
-                                      — error: "La foto debe ser tomada desde esta aplicación."
-                                      Order remains DISPATCHED
+[/deliveries/new/confirm/] Screen: Confirmar Entrega
+  Fields: order (dropdown, scoped to this distributor's DISPATCHED orders
+  only), photo_public_id (optional text field), confirmed_at
+  └─► POST (transaction.atomic) →
+        DeliveryConfirmation created, delivery_user = self (server-side,
+        never client-supplied)
+        Order.status → DELIVERED (not terminal — see §4.4)
+        AuditLog + Notification to store owner
+        → [/deliveries/queue/]
 ```
+
+⚠ **`photo_public_id` is optional and never validated** — per DR-09, photo-based proof-of-delivery was dropped from scope entirely (not just the Cloudinary SDK piece). The store owner's explicit confirm-or-dispute action (§4.4) is the actual source of truth now, not a photo. The original draft's "browser-direct Cloudinary upload, server validates public_id, rejects external URLs" flow does not exist and is not planned — it's superseded, not deferred.
 
 ---
 
 ## 6. Conceptual Wireframes
 
----
-
-### W-01 · Login Screen
-
-**Route:** `/accounts/login/`  
-**Accessible to:** All unauthenticated users
-
-**Layout Structure:**
-```
-┌─────────────────────────────────────────┐
-│           HEADER / BRAND                │
-│         [ISBER Solutions Logo]          │
-│         "Plataforma de Distribución"    │
-├─────────────────────────────────────────┤
-│                                         │
-│         ┌───────────────────────┐       │
-│         │    LOGIN CARD         │       │
-│         │                       │       │
-│         │  [Error Banner]       │       │  ← only shown on failed attempt
-│         │                       │       │
-│         │  Label: Correo        │       │
-│         │  [Email Input]        │       │
-│         │                       │       │
-│         │  Label: Contraseña    │       │
-│         │  [Password Input]     │       │
-│         │                       │       │
-│         │  [Btn: Iniciar sesión]│       │  ← Primary, full-width
-│         │                       │       │
-│         │  [Link: ¿Olvidaste    │       │
-│         │   tu contraseña?]     │       │
-│         └───────────────────────┘       │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Logo / App name | Image + Heading | Centered branding block |
-| Error banner | Alert (danger) | Generic: "Credenciales incorrectas." Hidden by default |
-| Email field | `<input type="email">` + `<label>` | Required; visible label (NFR-04.7) |
-| Password field | `<input type="password">` + `<label>` | Required; visible label |
-| Submit button | Primary button (full-width) | Label: "Iniciar sesión" |
-| Forgot password link | Anchor text | Routes to W-02 |
-
-**Component States & Behaviors:**
-
-- **Error banner:** Hidden on load; visible after failed POST; disappears when user starts typing again.
-- **Submit button:** Enabled at all times; validation errors returned server-side.
-- **Email/Password inputs:** No client-side enumeration — both fields clear only password on error.
-
----
-
-### W-02 · Password Reset — Request
-
-**Route:** `/accounts/password-reset/`
-
-**Layout Structure:**
-```
-┌─────────────────────────────────────────┐
-│           HEADER / BRAND                │
-├─────────────────────────────────────────┤
-│         ┌───────────────────────┐       │
-│         │   PASSWORD RESET CARD │       │
-│         │                       │       │
-│         │  [Info banner]        │       │  ← "Ingresa tu correo para recibir
-│         │                       │       │       un enlace de recuperación."
-│         │  Label: Correo        │       │
-│         │  [Email Input]        │       │
-│         │                       │       │
-│         │  [Btn: Enviar enlace] │       │  ← Primary
-│         │  [Link: Volver]       │       │  ← Secondary text link → W-01
-│         └───────────────────────┘       │
-│                                         │
-│         [Success banner — post submit]  │  ← "Si el correo existe, recibirás
-│         (always shown, avoids enum.)    │      un enlace en los próximos minutos."
-└─────────────────────────────────────────┘
-```
-
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Info banner | Alert (info) | Instructional text |
-| Email field | `<input type="email">` + `<label>` | Required |
-| Submit button | Primary button (full-width) | Label: "Enviar enlace" |
-| Back link | Anchor text | Routes to W-01 |
-| Success banner | Alert (success) | Always shown after POST regardless of email existence |
-
-**Component States & Behaviors:**
-
-- **Success banner:** Replaces form on POST success; no indication of whether email was found.
-- **Submit button:** Loading spinner state during POST.
-
----
-
-### W-03 · Set New Password
-
-**Route:** `/accounts/password-reset/<token>/`
-
-**Layout Structure:**
-```
-┌─────────────────────────────────────────┐
-│           HEADER / BRAND                │
-├─────────────────────────────────────────┤
-│         ┌───────────────────────┐       │
-│         │  SET NEW PASSWORD CARD│       │
-│         │                       │       │
-│         │  [Error banner]       │       │  ← token already used / expired
-│         │                       │       │
-│         │  Label: Nueva contr.  │       │
-│         │  [Password Input]     │       │
-│         │  [Validation hint]    │       │
-│         │                       │       │
-│         │  Label: Confirmar     │       │
-│         │  [Password Input]     │       │
-│         │  [Match error msg]    │       │
-│         │                       │       │
-│         │  [Btn: Guardar]       │       │  ← Primary; disabled until both fields valid
-│         └───────────────────────┘       │
-└─────────────────────────────────────────┘
-```
-
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Token error banner | Alert (danger) | "este enlace ya fue utilizado" or "el enlace ha expirado…" |
-| New password field | `<input type="password">` + `<label>` | Required |
-| Confirm password field | `<input type="password">` + `<label>` | Must match |
-| Inline mismatch error | Validation message (danger) | Shown below confirm field |
-| Submit button | Primary button | Disabled until passwords match |
-| Link to request new reset | Anchor text | Shown only on expired token error |
+Layouts below reflect the actual rendered HTML: plain `<table border="1">` data tables inside the shared `base.html` shell (header with nav + session bar, footer), no cards, no icons, no client-side JS beyond the vendor-dashboard poller. Every screen extends `base.html` and gets its nav/session-bar/messages block for free — that shell isn't repeated in each wireframe below.
 
 ---
 
 ### W-04 · Global Navigation Shell (Authenticated)
 
-All authenticated screens share this shell. Role determines which nav items appear.
+**Template:** `templates/base.html` — shared by every screen.
 
-**Layout Structure:**
 ```
-┌──────────────────────────────────────────────────────┐
-│  TOP NAV BAR                                         │
-│  [Logo]  [Nav items per role]       [Bell 🔔 3]  [👤 Nombre · Rol · Cerrar sesión] │
-├──────────┬───────────────────────────────────────────┤
-│ SIDEBAR  │  MAIN CONTENT AREA                        │
-│ (desktop)│                                           │
-│          │  [Page title]                             │
-│ Nav      │                                           │
-│ items    │  [Content]                                │
-│ (list)   │                                           │
-│          │                                           │
-└──────────┴───────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  ISBER Solutions — Distribuidora                                  │
+│  [Inicio] [Dashboard]* [Usuarios] [Catálogo] [Pedidos] [Entregas] │
+│  [Auditoría] [Notificaciones (N)]      [correo (Rol)] [Cerrar sesión] │
+├──────────────────────────────────────────────────────────────────┤
+│  {% if messages %} success/error banners {% endif %}              │
+│                                                                    │
+│  [Page content]                                                   │
+│                                                                    │
+├──────────────────────────────────────────────────────────────────┤
+│  Loja — Ecuador            {current date/time}                    │
+└──────────────────────────────────────────────────────────────────┘
+```
+`*` "Dashboard" link only shown for `DISTRIBUTOR`. Every other nav item is shown to **every** authenticated role regardless of whether they're allowed on that page (see §1.6) — clicking one you can't access 403s.
+
+(🔮 Future Upgrade: role-filtered nav; sidebar layout instead of a flat top nav for desktop, as the original draft envisioned; hamburger collapse under 360px per NFR-04.2 — currently no responsive breakpoint logic exists in `styles.css` at all.)
+
+---
+
+### W-01 · Login
+
+**Route:** `/login/` · **Template:** `catalog/templates/registration/login.html`
+
+```
+┌─[Nav Shell]────────────────────────────┐
+│  Iniciar sesión                        │
+│                                         │
+│  [Error text — only on failed attempt] │
+│  "Correo o contraseña incorrectos."    │
+│                                         │
+│  {{ form.as_p }}  ← email + password,  │
+│    Django's default AuthenticationForm │
+│    rendering, no custom styling        │
+│                                         │
+│  [Btn: Ingresar]                       │
+│  [Link: ¿Olvidaste tu contraseña?]     │
+└─────────────────────────────────────────┘
 ```
 
-**Nav items by role:**
+---
 
-| DISTRIBUTOR | VENDOR | STORE_OWNER | DELIVERY |
-|-------------|--------|-------------|----------|
-| Dashboard | Dashboard | Nuevo Pedido | Cola de Entregas |
-| Catálogo | Mi Inventario | Mis Pedidos | — |
-| Inventario | — | Notificaciones | — |
-| Tiendas | — | — | — |
-| Usuarios | — | — | — |
+### W-02 · Password Reset — Request
 
-**Component States & Behaviors:**
+**Route:** `/accounts/password-reset/` · **Template:** `accounts/solicitar_reset_password.html`
 
-- **Notification bell (🔔):** Visible only for STORE_OWNER. Badge count = unread notifications. Loaded on every page load (no polling for store owners per DR-03).
-- **Sidebar:** Collapses to hamburger menu on screens < 360 px wide (NFR-04.2).
-- **Active nav item:** Highlighted/underlined to indicate current section.
-- **Role badge:** User name and role shown next to avatar/initials in top-right.
+```
+┌─[Nav Shell]────────────────────────────┐
+│  Recuperar contraseña                  │
+│  "Ingresa tu correo electrónico y te   │
+│   enviaremos un enlace..."             │
+│  {{ formulario.as_p }}  ← email        │
+│  [Btn: Enviar enlace]  [Cancelar]      │
+└─────────────────────────────────────────┘
+
+→ on submit, always: "accounts/password_reset_solicitado.html"
+┌─────────────────────────────────────────┐
+│  Enlace enviado                        │
+│  "Si el correo ingresado está          │
+│   registrado, recibirás un enlace..."  │
+│  [Volver a iniciar sesión]             │
+└─────────────────────────────────────────┘
+```
+
+---
+
+### W-03 · Set New Password / Token Error
+
+**Route:** `/accounts/password-reset/<token>/`
+
+```
+┌─[Nav Shell]────────────────────────────┐   ┌─[Nav Shell]────────────────┐
+│  Restablecer contraseña                │   │  Enlace inválido           │
+│  {{ formulario.as_p }}  ← new pw x2    │   │  "este enlace ya fue       │
+│  [Btn: Guardar nueva contraseña]       │   │   utilizado" / "expiró"    │
+└─────────────────────────────────────────┘   │  [Solicitar nuevo enlace] │
+                                               └─────────────────────────────┘
+```
+
+---
+
+### W-04b · Distributor Onboarding (superuser) — NEW
+
+**Route:** `/accounts/distributors/new/` · **Template:** `accounts/crear_distribuidor.html` · **Role:** Django superuser only
+
+```
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver (→ /admin/)                  │
+│  Crear Distribuidor                    │
+│  "Esto crea la distribuidora y su      │
+│  primera cuenta de administrador       │
+│  (rol DISTRIBUTOR) en un solo paso."   │
+│                                         │
+│  {{ formulario.as_p }}                 │
+│   distributor_name · distributor_email │
+│   admin_email · admin_password1/2      │
+│                                         │
+│  [Btn: Guardar]  [Cancelar]            │
+└─────────────────────────────────────────┘
+```
+
+---
+
+### W-04c · Store Owner Self-Registration (invite link) — NEW
+
+**Route:** `/accounts/join/<token>/` · **Template:** `accounts/registrar_tienda.html` · **Role:** unauthenticated, token-gated
+
+```
+┌─[Nav Shell]────────────────────────────┐
+│  Registrar mi tienda — {distribuidor}  │
+│  "Completa tus datos para crear tu     │
+│  cuenta y empezar a hacer pedidos..."  │
+│                                         │
+│  {{ formulario.as_p }}                 │
+│   owner_email · owner_password1/2      │
+│   store_name · store_address · store_phone │
+│                                         │
+│  [Btn: Crear mi cuenta]                │
+└─────────────────────────────────────────┘
+```
 
 ---
 
 ### W-05 · Distributor Operations Dashboard
 
-**Route:** `/catalog/dashboard/` (or `/distributor/dashboard/`)  
-**Role:** DISTRIBUTOR
+**Route:** `/accounts/dashboard/` · **Template:** `accounts/dashboard.html` · **Role:** DISTRIBUTOR
 
-**Layout Structure:**
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Dashboard de Operaciones                                         │
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
+│  Dashboard — {distributor name}                                  │
 │                                                                   │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │  FILTERS BAR                                                │  │
-│  │  [Date range picker] [Vendor ▼] [Store ▼] [Status ▼] [Aplicar] │
-│  └─────────────────────────────────────────────────────────────┘  │
+│  [⚠ N producto(s) con stock bajo — banner, only if N > 0]        │
 │                                                                   │
-│  SUMMARY METRICS ROW                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐         │
-│  │ PENDING  │  │ACCEPTED  │  │DISPATCHED│  │DELIVERED │         │
-│  │   12     │  │   5      │  │   3      │  │   48     │         │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘         │
+│  FILTROS (GET form)                                              │
+│  [Desde][Hasta][Vendedor ▼][Tienda ▼][Estado ▼] [Filtrar] [Limpiar] │
 │                                                                   │
-│  ORDERS TABLE                                                     │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ # │ Store │ Vendor │ Date │ Items │ Status │ Actions      │   │
-│  │ ─ │ ───── │ ────── │ ──── │ ───── │ ────── │ ─────────── │   │
-│  │001│Tienda1│ Juan   │01/07 │  3    │PENDING │ [Ver]        │   │
-│  │002│Tienda2│ Pedro  │01/07 │  1    │DELIVERED│[Ver]        │   │
-│  └───────────────────────────────────────────────────────────┘   │
+│  RESUMEN                                                          │
+│  ┌───────────────────────────┬────────┐                          │
+│  │ Total de pedidos          │  N     │                          │
+│  │ Cumplidos (confirmados)   │  N     │                          │
+│  │ Rechazados                │  N     │                          │
+│  │ Tiempo promedio cumplim.  │ Xd Xh  │                          │
+│  └───────────────────────────┴────────┘                          │
 │                                                                   │
-│  INVENTORY OVERVIEW                                               │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Product       │ Vendor A │ Vendor B │ Vendor C            │   │
-│  │ ──────────    │ ──────── │ ──────── │ ──────────          │   │
-│  │ Coca-Cola     │  120     │ ⚠️ 3      │   45               │   │  ← low-stock badge
-│  │ Pepsi 2L      │   50     │   80     │ ⚠️ 2                │   │
-│  └───────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────┘
+│  PEDIDOS POR ESTADO (table: estado · cantidad)                   │
+│                                                                   │
+│  PEDIDOS (up to 50, newest first — # links to detail)            │
+│                                                                   │
+│  INVENTARIO POR VENDEDOR                                          │
+│  (rows below threshold highlighted + "⚠ Stock bajo" text)        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Filters bar | Row of form controls | Date range, 3 dropdowns, apply button |
-| Summary metric cards | Stat cards (4) | PENDING · ACCEPTED · DISPATCHED · DELIVERED counts |
-| Orders data table | Table w/ pagination | Sortable columns; "Ver" links to order detail |
-| Low-stock badge | Inline badge (warning ⚠️) | Shown when qty < `low_stock_threshold` (DR-05) |
-| Inventory grid | Table | Rows = products; columns = vendors; cells = quantity |
-
-**Component States & Behaviors:**
-
-- **Summary cards:** Click on a card pre-filters the orders table to that status.
-- **Low-stock badge:** Color: amber/orange. Tooltip shows threshold value.
-- **"Ver" link:** Opens W-13 (Order Detail — Distributor view).
-- **Filters bar "Aplicar":** Loading spinner while table refreshes.
+(🔮 Future Upgrade: the original draft's clickable stat-cards, product×vendor matrix layout instead of a flat row list, and a proper date-range picker widget instead of two plain `<input type="date">` fields.)
 
 ---
 
-### W-06 · Product List (Distributor)
+### W-06 · Catálogo (Products + Stores + Inventory, one page)
 
-**Route:** `/catalog/products/`  
-**Role:** DISTRIBUTOR
+**Route:** `/catalog/` · **Template:** `catalog/index.html` · **Role:** DISTRIBUTOR
 
-**Layout Structure:**
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Catálogo de Productos                    [+ Nuevo Producto]      │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ [Search input: "Buscar producto..."]                      │   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Name │ Description │ Unit Price │ Threshold │ Status │ Actions│
-│  │ ──── │ ─────────── │ ────────── │ ───────── │ ────── │ ─────── │
-│  │Coca-C│ Bebida gaseosa│  $1.50   │     5     │ ✅ Activo│[Editar][Desactivar]│
-│  │Pepsi │ Bebida gaseosa│  $1.40   │    10     │ ❌ Inactivo│[Editar][Reactivar]│
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  [Pagination controls]                                            │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
+│  Tiendas                                    [+ Nueva Tienda]     │
+│  (table: nombre · dirección · teléfono · distribuidor · dueño ·  │
+│   [Editar][Eliminar])                                            │
+│  ──────────                                                       │
+│  Productos                                  [+ Nuevo Producto]   │
+│  (table: nombre · descripción · precio · distribuidor · estado · │
+│   [Editar][Desactivar/Reactivar])                                │
+│  ──────────                                                       │
+│  Inventario de Vendedores                                        │
+│  "Para asignar inventario usa /catalog/inventory/assign/<id>/    │
+│   (obtener ID desde Usuarios)"                                   │
+│  (table: vendedor · producto · cantidad (+"⚠ Stock bajo" text)   │
+│   · [Editar][Eliminar])                                          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Page header + "Nuevo Producto" | H1 + Primary button | Top-right button |
-| Search input | `<input type="search">` | Client-side filter |
-| Products table | Data table | Sortable; paginated |
-| Status badge | Badge (green=Activo / gray=Inactivo) | Per DR-06 |
-| "Editar" | Secondary button per row | Opens W-07 |
-| "Desactivar" / "Reactivar" | Danger / Success button per row | Triggers confirmation modal |
-
-**Component States & Behaviors:**
-
-- **"Desactivar":** Triggers confirmation modal before setting `is_active=False`. AuditLog written.
-- **"Reactivar":** No confirmation needed; sets `is_active=True` immediately.
-- **Inactive rows:** Row visually dimmed (reduced opacity) to signal inactivity.
+Combines the original draft's separate W-06 (Product List) and W-08 (Assign Inventory grid) into the one real page. (🔮 Future Upgrade: split into separate tabs/pages as the app grows — this single page will get long once a distributor has more than a handful of products/stores.)
 
 ---
 
-### W-07 · Create / Edit Product Form
+### W-07 · Create / Edit Product
 
-**Route:** `/catalog/products/new/` · `/catalog/products/<id>/edit/`  
-**Role:** DISTRIBUTOR
+**Route:** `/catalog/products/new/`, `/catalog/products/<id>/edit/` · **Role:** DISTRIBUTOR
 
-**Layout Structure:**
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  ← Volver al Catálogo                                             │
-│  Nuevo Producto  /  Editar Producto                               │
-│                                                                   │
-│  ┌─────────────────────────────────────────┐                      │
-│  │  Label: Nombre del producto *           │                      │
-│  │  [Text Input]                           │                      │
-│  │  [Validation error msg]                 │                      │
-│  │                                         │                      │
-│  │  Label: Descripción *                   │                      │
-│  │  [Textarea]                             │                      │
-│  │  [Validation error msg]                 │                      │
-│  │                                         │                      │
-│  │  Label: Precio unitario (USD) *         │                      │
-│  │  [Number Input — min 0.01]              │                      │
-│  │  [Validation error msg]                 │                      │
-│  │                                         │                      │
-│  │  Label: Umbral de stock bajo *          │                      │
-│  │  [Number Input — min 0, default 5]      │                      │
-│  │  Helper: "El dashboard alertará cuando  │                      │
-│  │  el stock caiga por debajo de este valor"│                     │
-│  │                                         │                      │
-│  │  [Btn: Guardar producto]  [Btn: Cancelar]│                     │
-│  └─────────────────────────────────────────┘                      │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver al Catálogo                  │
+│  Crear/Editar Producto                 │
+│  {{ formulario.as_p }}                 │
+│   name · description · unit_price ·    │
+│   is_active · low_stock_threshold      │
+│  [Btn: Guardar]  [Cancelar]            │
+└─────────────────────────────────────────┘
 ```
-
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Back link | Anchor | Returns to W-06 |
-| Name field | `<input type="text">` + `<label>` | Required |
-| Description field | `<textarea>` + `<label>` | Required |
-| Unit price field | `<input type="number" step="0.01" min="0.01">` | Required |
-| Low-stock threshold | `<input type="number" min="0">` + helper text | Default: 5 (DR-05, US-25) |
-| Inline validation errors | Error text below each field | Per-field messages |
-| Save button | Primary button | Label: "Guardar producto" |
-| Cancel button | Secondary/ghost button | Returns to W-06 without saving |
-
-**Component States & Behaviors:**
-
-- **Save button:** Disabled during POST submission (prevents double-submit). Loading spinner shown.
-- **Price field on Edit:** Change reflected immediately in catalog; existing `unitPriceAtTime` on past orders is preserved (US-05 acceptance criteria).
 
 ---
 
 ### W-08 · Assign Inventory to Vendor
 
-**Route:** `/catalog/inventory/assign/`  
-**Role:** DISTRIBUTOR
+**Route:** `/catalog/inventory/assign/<vendor_id>/` · **Role:** DISTRIBUTOR
 
-**Layout Structure:**
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Inventario — Asignar Stock               [+ Asignar Stock]      │
-│                                                                   │
-│  INVENTORY GRID                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Product       │ Vendor A │ Vendor B │ Vendor C            │   │
-│  │ ──────────    │ ──────── │ ──────── │ ──────────          │   │
-│  │ Coca-Cola     │  120     │ ⚠️ 3      │   45               │   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  ASSIGN FORM PANEL (inline or modal)                              │
-│  ┌─────────────────────────────────────────┐                      │
-│  │  Label: Vendedor *                      │                      │
-│  │  [Dropdown — vendors in distributor]    │                      │
-│  │                                         │                      │
-│  │  Label: Producto *                      │                      │
-│  │  [Dropdown — active products only]      │                      │
-│  │                                         │                      │
-│  │  Label: Cantidad *                      │                      │
-│  │  [Number Input — min 0]                 │                      │
-│  │  Helper: "0 elimina el producto del     │                      │
-│  │  inventario del vendedor"               │                      │
-│  │                                         │                      │
-│  │  [Btn: Guardar]  [Btn: Cancelar]        │                      │
-│  └─────────────────────────────────────────┘                      │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]────────────────────────────┐
+│  Asignar Inventario — {vendor email}   │
+│  {{ formulario.as_p }}                 │
+│   product (dropdown) · quantity        │
+│  [Btn: Guardar]  [Cancelar]            │
+└─────────────────────────────────────────┘
 ```
-
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Inventory grid | Data table | Read-only; low-stock ⚠️ badges |
-| Vendor dropdown | `<select>` + `<label>` | Scoped to distributor's vendors |
-| Product dropdown | `<select>` + `<label>` | Active products only |
-| Quantity field | `<input type="number" min="0">` | qty=0 removes the assignment |
-| Negative qty error | Inline validation | "La cantidad no puede ser negativa" |
-| Save button | Primary button | Upserts VendorInventory |
-| Cancel button | Secondary button | Clears form |
 
 ---
 
 ### W-09 · User Management (Distributor)
 
-**Route:** `/accounts/users/`  
-**Role:** DISTRIBUTOR
+**Route:** `/accounts/users/` · **Template:** `accounts/index.html` · **Role:** DISTRIBUTOR
 
-**Layout Structure:**
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Usuarios de la Plataforma             [+ Nuevo Usuario]          │
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
+│  Usuarios — {distributor name}                                   │
+│  [+ Admin Distribuidor] [+ Vendedor] [+ Dueño de Tienda] [+ Repartidor] │
 │                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Name │ Email │ Role │ Active │ Created │ Actions           │   │
-│  │ ──── │ ───── │ ──── │ ────── │ ─────── │ ────────────── │   │
-│  │ Juan │ j@… │ VENDOR │ ✅ Sí  │ 01/06   │ [Editar]         │   │
-│  │ Ana  │ a@… │STORE_OWNER│ ✅ Sí│ 15/06 │ [Editar]         │   │
-│  └───────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────┘
+│  Enlace de registro para dueños de tienda                        │
+│  {full invite URL as text}   [Generar nuevo enlace]              │
+│                                                                   │
+│  (table: email · rol · [Editar][Eliminar])                       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Create / Edit User Form (modal or separate screen):**
-
-| Field | Type | Notes |
-|-------|------|-------|
-| Full name | Text input | Required |
-| Email | Email input | Required; unique |
-| Password | Password input | Required on create; optional on edit |
-| Role | Select dropdown | VENDOR · STORE_OWNER · DELIVERY (not DISTRIBUTOR) |
-| Active | Toggle/checkbox | Default: true |
-
-**Component States & Behaviors:**
-
-- **Role dropdown:** DISTRIBUTOR option is hidden/absent per US-24 acceptance criteria.
-- **"Editar" button:** Pre-populates form with current values; password field shows "Dejar en blanco para no cambiar."
-- **Tenant isolation:** Users created here are scoped to the current distributor; never visible to other distributors.
+No password field on this list screen, no "Active" toggle in the table (it's on the edit form) — different from the original draft's inline table. Role is not user-selectable at creation (see §2.1 — DR-07); it *is* editable afterward via "Editar."
 
 ---
 
-### W-10 · Vendor Dashboard (with Polling)
+### W-10 · Vendor Order List (with Polling)
 
-**Route:** `/orders/vendor-dashboard/`  
-**Role:** VENDOR
+**Route:** `/orders/` (as VENDOR) · **Template:** `orders/index.html`
 
-**Layout Structure:**
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Panel del Vendedor                                               │
-│                                                                   │
-│  PENDING ORDERS                        [Last updated: 14:32:05]  │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ # │ Store │ Date │ Items │ Total │ Actions                 │   │
-│  │ ─ │ ───── │ ──── │ ───── │ ───── │ ────────────────────── │   │
-│  │001│Tienda1│01/07 │  3    │$45.00 │ [Ver pedido]           │   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  ACCEPTED ORDERS                                                  │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ # │ Store │ Accepted at │ Items │ Actions                  │   │
-│  │ ─ │ ───── │ ─────────── │ ───── │ ────────────────────── │   │
-│  │002│Tienda2│  13:20      │  1    │ [Ver pedido]            │   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  MY INVENTORY                                                     │
-│  ┌─────────────────────────────────────────┐                      │
-│  │ Product     │ Available qty              │                      │
-│  │ ─────────── │ ─────────────             │                      │
-│  │ Coca-Cola   │     120                    │                      │
-│  │ Pepsi 2L    │      50                    │                      │
-│  └─────────────────────────────────────────┘                      │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
+│  Pedidos                                                          │
+│  {status text — updated by JS poll}                              │
+│  (table: # · tienda · vendedor · estado · creado · [Ver])         │
+│   ← rows for ALL this vendor's orders (not split into pending/    │
+│     accepted sub-tables as the original draft showed)             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| "Last updated" timestamp | Small text | Updated each poll cycle |
-| Pending orders table | Data table | Polled every 30s via JS; rows added without reload |
-| Accepted orders table | Data table | Static; shows orders ready to dispatch |
-| My inventory table | Data table | Read-only; vendor's own stock only |
-| "Ver pedido" button | Secondary button | Opens W-11 |
-| New-order toast | Toast notification | Appears when poll finds new rows |
-
-**Component States & Behaviors:**
-
-- **JS Polling:** `setInterval(30000)` → `fetch('/api/orders/pending/')` → DOM update.
-- **Empty pending table:** "No tienes pedidos pendientes en este momento." placeholder row.
-- **New order sound/badge:** Optional visual pulse on the section heading when new row arrives.
+JS: `setInterval(30000)` → `fetch('/api/orders/pending/')` → new `PENDING` rows prepended to the same table (no separate "Last updated" timestamp shown). No dedicated "Mi Inventario" section (see §3.6 — not built).
 
 ---
 
 ### W-11 · Order Detail — Vendor View
 
-**Route:** `/orders/<id>/` (vendor session)  
-**Role:** VENDOR
+**Route:** `/orders/<id>/` (vendor session) · **Template:** `orders/ver_pedido.html`
 
-**Layout Structure:**
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  ← Volver al panel                                                │
-│  Pedido #001 — PENDING                    [Status badge]         │
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
+│  ← Volver a Pedidos                                               │
+│  Pedido #001 — {estado}                                          │
+│  Tienda / Vendedor / Creado / Actualizado                        │
+│  [Motivo de rechazo — if any] [Incidencia reportada — if any]    │
+│  [Resolución — if any]                                            │
+│  Estado: Pendiente → Aceptado → Despachado → Entregado →         │
+│          Confirmado (o Incidencia → Confirmado) | Rechazado      │
 │                                                                   │
-│  ORDER INFO                                                       │
-│  ┌─────────────────────────────────────────┐                      │
-│  │ Tienda: Tienda El Sol                   │                      │
-│  │ Fecha: 01/07/2026, 14:00                │                      │
-│  │ Vendedor asignado: Juan Pérez           │                      │
-│  └─────────────────────────────────────────┘                      │
+│  ── if PENDING ──                                                 │
+│  [form: Aceptar]  [link→W-11b: Rechazar]                          │
+│  ── if ACCEPTED ──                                                │
+│  [form: Marcar como despachado]                                  │
+│  ── if DELIVERY_ISSUE ──                                          │
+│  [link→W-11c: Resolver incidencia]                                │
 │                                                                   │
-│  ORDER ITEMS                                                      │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Product    │ Qty ordered │ Unit price │ Subtotal           │   │
-│  │ ─────────  │ ─────────── │ ────────── │ ───────            │   │
-│  │ Coca-Cola  │     10      │   $1.50    │  $15.00            │   │
-│  │ Pepsi 2L   │      5      │   $1.40    │   $7.00            │   │
-│  │            │             │  TOTAL:    │  $22.00            │   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  [Inline stock error banner]  ← only on failed accept             │
-│  "Stock insuficiente: Pepsi 2L (disponible: 3, solicitado: 5)"   │
-│                                                                   │
-│  ACTION BUTTONS  (shown according to current status)             │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ [Btn: Aceptar ✓]          [Btn: Rechazar ✗]               │   │  ← PENDING
-│  │ [Btn: Marcar como Despachado]                              │   │  ← ACCEPTED
-│  └───────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────┘
+│  Items del Pedido (product · qty · unit price — no edit/delete   │
+│  controls for VENDOR, those are STORE_OWNER-only)                │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Back link | Anchor | Returns to W-10 |
-| Order info card | Info panel | Store, date, assigned vendor |
-| Order items table | Data table | Product · qty · unit price · subtotal; total row |
-| Stock error banner | Alert (danger) | Per-item errors on failed accept; hidden normally |
-| "Aceptar" button | Success/primary button | Triggers confirmation modal → W-11a |
-| "Rechazar" button | Danger button | Triggers reject modal → W-11b |
-| "Marcar como Despachado" button | Warning/secondary button | Only when ACCEPTED; triggers confirm modal |
-
-**Component States & Behaviors:**
-
-- **Action buttons:** Rendered conditionally by server based on order status. PENDING: Aceptar + Rechazar. ACCEPTED: Marcar como Despachado. DISPATCHED/DELIVERED/REJECTED: no actions; read-only view.
-- **"Aceptar" loading state:** Button shows spinner and is disabled during POST to prevent double-submission.
+Every action button is a plain `<form method="post">` with `onsubmit="return confirm('...')"` — a native browser dialog, not a styled modal.
 
 ---
 
-### W-11a · Modal: Confirm Order Accept
+### W-11b · Reject Order
+
+**Route:** `/orders/<id>/reject/` · **Template:** `orders/rechazar_pedido.html`
 
 ```
-┌─────────────────────────────────────┐
-│  Confirmar aceptación               │
-│  ─────────────────────────────────  │
-│  ¿Deseas aceptar el Pedido #001?    │
-│  Se descontará el inventario        │
-│  correspondiente.                   │
-│                                     │
-│  [Btn: Confirmar]  [Btn: Cancelar]  │
-└─────────────────────────────────────┘
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver al pedido                    │
+│  Rechazar Pedido #001                  │
+│  Tienda: {store}                       │
+│  Motivo (opcional): [textarea]         │
+│  [Btn: Rechazar pedido]  [Cancelar]    │
+└─────────────────────────────────────────┘
 ```
 
 ---
 
-### W-11b · Modal: Confirm Order Reject
+### W-11c · Resolve Delivery Issue — NEW
+
+**Route:** `/orders/<id>/resolve-issue/` · **Template:** `orders/resolver_incidencia.html`
 
 ```
-┌─────────────────────────────────────┐
-│  Rechazar pedido                    │
-│  ─────────────────────────────────  │
-│  Label: Motivo del rechazo          │
-│  [Textarea — optional, max 500 ch.] │
-│                                     │
-│  [Btn: Rechazar pedido] [Cancelar]  │
-└─────────────────────────────────────┘
-```
-
-**Component States & Behaviors:**
-- **Textarea:** Optional. If empty, Notification to store owner omits the reason.
-- **"Rechazar pedido" button:** Primary danger style. Loading state on click.
-
----
-
-### W-12 · Store Owner Dashboard
-
-**Route:** `/orders/store-dashboard/`  
-**Role:** STORE_OWNER
-
-**Layout Structure:**
-```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Panel de Tienda                                                  │
-│                                                                   │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │  NOTIFICATIONS BANNER (if unread > 0)                       │  │
-│  │  "Tienes 3 notificaciones sin leer." [Ver notificaciones]   │  │
-│  └─────────────────────────────────────────────────────────────┘  │
-│                                                                   │
-│  QUICK ACTIONS                                                    │
-│  ┌──────────────────────────────┐                                │
-│  │  [Btn: + Nuevo Pedido]       │  ← PRIMARY, large (48px tap)  │
-│  │  (disabled if no vendor)     │                                │
-│  └──────────────────────────────┘                                │
-│  [If no vendor: "Tu tienda no tiene un vendedor asignado.        │
-│   Contacta al distribuidor."]                                     │
-│                                                                   │
-│  RECENT ORDERS                                                    │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ # │ Date │ Items │ Status │ Actions                        │   │
-│  │ ─ │ ──── │ ───── │ ────── │ ─────────────────────────── │   │
-│  │001│01/07 │  3    │PENDING │ [Ver] [Cancelar]              │   │
-│  │002│28/06 │  1    │DELIVERED│[Ver]                         │   │
-│  └───────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Notifications banner | Alert (info) | Shown only if unread > 0; links to W-16 |
-| "Nuevo Pedido" button | Primary button (large) | Min 48×48 px (NFR-04.3); disabled state if no vendor |
-| No-vendor message | Info text | Shown below disabled button per DR-01 |
-| Recent orders table | Data table | Last 10 orders; full list at "Mis Pedidos" |
-| Status badge | Colored badge | PENDING=yellow · ACCEPTED=blue · DISPATCHED=orange · DELIVERED=green · REJECTED=red |
-| "Ver" button | Secondary button | Opens W-15 |
-| "Cancelar" button | Danger button | Only for PENDING orders; opens cancel modal |
-
----
-
-### W-13 · Place Order — Step 0: Select Store
-
-**Route:** `/orders/new/` → step 0  
-**Role:** STORE_OWNER (when owner belongs to multiple stores)
-
-```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Nuevo Pedido — Paso 1 de 3                                       │
-│  [Step indicator: ● — — ]                                         │
-│                                                                   │
-│  ¿Para qué tienda es el pedido?                                   │
-│                                                                   │
-│  ┌─────────────────────────────────────────┐                      │
-│  │  ○  Tienda El Sol — Calle 10, Loja      │                      │
-│  │  ○  Tienda La Luna — Av. Universitaria  │                      │
-│  └─────────────────────────────────────────┘                      │
-│                                                                   │
-│  [Btn: Continuar]  ← disabled until a store is selected          │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver al pedido                    │
+│  Resolver Incidencia — Pedido #001     │
+│  Tienda: {store}                       │
+│  Problema reportado: {issue_description}│
+│  Notas de resolución: [textarea]       │
+│  [Btn: Marcar como resuelta] [Cancelar]│
+└─────────────────────────────────────────┘
 ```
 
 ---
 
-### W-14 · Place Order — Step 1: Select Products
+### W-12 · Store Owner Order List
 
-**Route:** `/orders/new/` → step 1  
-**Role:** STORE_OWNER
-
-```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Nuevo Pedido — Paso 2 de 3                                       │
-│  [Step indicator: ✓ ● — ]                                         │
-│                                                                   │
-│  Selecciona los productos                                         │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Product    │ Unit price │ Qty                              │   │
-│  │ ─────────  │ ────────── │ ─────────────────────────────── │   │
-│  │ Coca-Cola  │   $1.50    │ [ - ] [ 0 ] [ + ]               │   │
-│  │ Pepsi 2L   │   $1.40    │ [ - ] [ 0 ] [ + ]               │   │
-│  │ Agua 500ml │   $0.80    │ [ - ] [ 0 ] [ + ]               │   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  [Btn: Ver resumen →]  ← disabled if all qty = 0                 │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-**Component States & Behaviors:**
-
-- **Quantity stepper:** Min value = 0 (typing or decrement below 0 is blocked). Min tap target 48×48 px.
-- **"Ver resumen" button:** Enabled only when at least one product has qty ≥ 1.
-- **Product list:** Only active products from assigned vendor's inventory shown.
+**Route:** `/orders/` (as STORE_OWNER) — same template/screen as W-10, scoped to the owner's own stores' orders. No separate dashboard with quick-actions/notifications-banner as the original draft (W-12) showed — "Nuevo Pedido" is reached the same way any other role reaches their section, via the nav.
 
 ---
 
-### W-15 · Place Order — Step 2: Review & Confirm
+### W-13 · Place Order
 
-**Route:** `/orders/new/` → step 2
+**Route:** `/orders/new/` · **Template:** `orders/crear_pedido.html` · **Role:** STORE_OWNER
 
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Nuevo Pedido — Paso 3 de 3                                       │
-│  [Step indicator: ✓ ✓ ● ]                                         │
-│                                                                   │
-│  Resumen del pedido                                               │
-│                                                                   │
-│  [Stock error banner — if any item unavailable after submit]      │
-│  "Pepsi 2L no está disponible en el inventario del vendedor."     │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Product    │ Qty │ Unit price │ Subtotal                   │   │
-│  │ ─────────  │ ─── │ ────────── │ ──────────                 │   │
-│  │ Coca-Cola  │  10 │   $1.50    │  $15.00                    │   │
-│  │ Pepsi 2L   │   5 │   $1.40    │   $7.00                    │   │
-│  │            │     │  TOTAL:    │  $22.00                    │   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  [← Editar productos]    [Btn: Confirmar Pedido ✓]              │
-│                          ← Primary; min 48×48 px                 │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver a Pedidos                    │
+│  Crear Pedido                          │
+│  {{ formulario.as_p }}  ← store (dropdown, own stores only) │
+│  [Btn: Guardar]  [Cancelar]            │
+└─────────────────────────────────────────┘
+      │
+      ▼ (on submit, redirects straight into the new order's detail page)
 ```
+
+Replaces the original draft's W-13/W-14/W-15/W-15b 4-screen wizard (select store → build cart → review → confirm) — see the 🔮 Future Upgrade note in §4.1 for why the wizard is still worth building.
 
 ---
 
-### W-15b · Place Order — Step 3: Confirmation
+### W-14 · Add Item to Order
+
+**Route:** `/orders/<order_id>/items/new/` · **Template:** `orders/crear_item_pedido.html` · **Role:** STORE_OWNER, order must be PENDING
 
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  ✅  ¡Pedido enviado exitosamente!                                │
-│                                                                   │
-│  Número de pedido: #001                                           │
-│  Tienda: Tienda El Sol                                            │
-│  El vendedor revisará tu pedido pronto.                           │
-│                                                                   │
-│  [Btn: Ver mis pedidos]   [Btn: Nuevo pedido]                    │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver al pedido                    │
+│  Agregar Item al Pedido #001           │
+│  Tienda / Vendedor / Estado            │
+│  {{ formulario.as_p }}                 │
+│   product (dropdown, scoped to what    │
+│   the vendor stocks) · quantity        │
+│  [Btn: Guardar]  [Cancelar]            │
+└─────────────────────────────────────────┘
 ```
+
+No live running total / quantity stepper UI — plain `<select>` + number input, one item per form submission.
 
 ---
 
 ### W-16 · Order Detail — Store Owner View
 
-**Route:** `/orders/<id>/` (store owner session)  
-**Role:** STORE_OWNER
+**Route:** `/orders/<id>/` (store owner session) — same template as W-11, different action set:
 
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  ← Mis Pedidos                                                    │
-│  Pedido #001                              [Status badge: PENDING] │
-│                                                                   │
-│  ┌─────────────────────────────────────────┐                      │
-│  │ Tienda: Tienda El Sol                   │                      │
-│  │ Fecha: 01/07/2026, 14:00                │                      │
-│  │ Vendedor: Juan Pérez                    │                      │
-│  └─────────────────────────────────────────┘                      │
-│                                                                   │
-│  ORDER ITEMS TABLE  (same as W-11)                                │
-│                                                                   │
-│  STATUS TIMELINE                                                  │
-│  ┌─────────────────────────────────────────┐                      │
-│  │ ✅ Creado — 01/07 14:00                 │                      │
-│  │ ⏳ Esperando al vendedor…               │                      │
-│  └─────────────────────────────────────────┘                      │
-│                                                                   │
-│  ACTIONS (contextual by status)                                   │
-│  PENDING:     [Btn: Cancelar pedido]                              │
-│  REJECTED:    [Motivo: "..."]  [Btn: Reenviar pedido]            │
-│  Others:      (read-only)                                         │
-└───────────────────────────────────────────────────────────────────┘
+── if PENDING ──
+[form: Cancelar pedido]   [link: + Agregar Item]
+[Editar]/[Eliminar] per item row
+── if REJECTED ──
+[Motivo de rechazo shown] — no "Reenviar pedido" button (§4.5, not built)
+── if DELIVERED ──
+[form: Confirmar recepción]   [link→ Reportar problema]
+── if DELIVERY_ISSUE / CONFIRMED ──
+read-only
 ```
 
 ---
 
-### W-17 · Notification Center — Store Owner
+### W-16b · Report Delivery Issue — NEW
 
-**Route:** `/accounts/notifications/`  
-**Role:** STORE_OWNER
+**Route:** `/orders/<id>/report-issue/` · **Template:** `orders/reportar_incidencia.html`
 
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver al pedido                    │
+│  Reportar Incidencia — Pedido #001     │
+│  Tienda: {store}                       │
+│  Describe el problema: [textarea]      │
+│  [Btn: Reportar problema]  [Cancelar]  │
+└─────────────────────────────────────────┘
+```
+
+---
+
+### W-17 · Notification List — all roles, not STORE_OWNER-exclusive
+
+**Route:** `/accounts/notifications/` · **Template:** `accounts/notificaciones.html`
+
+```
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
 │  Notificaciones                     [Marcar todas como leídas]   │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ 🔵 [Nuevo] Tu Pedido #001 fue ACEPTADO       01/07 14:10  │   │  ← unread
-│  │    [Ver pedido]                                           │   │
-│  ├───────────────────────────────────────────────────────────┤   │
-│  │ ⬜ Tu Pedido #002 fue DESPACHADO              30/06 09:00  │   │  ← read
-│  │    [Ver pedido]                                           │   │
-│  └───────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────────┘
+│  (table: mensaje · pedido (link) · fecha · estado · [Marcar       │
+│   como leída] per unread row)                                    │
+│  {empty state: "No tienes notificaciones."}                      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| "Marcar todas" button | Secondary button | Sets all `is_read=True`; badge → 0 |
-| Notification row | List item | Blue dot = unread; grey = read |
-| "Ver pedido" link | Anchor | Routes to W-16 for that order |
-| Empty state | Illustration + text | "No tienes notificaciones." |
+No blue-dot/grey-dot visual distinction as the original draft showed — read/unread is a text column ("Leída"/"No leída").
 
 ---
 
-### W-18 · Delivery Queue
+### W-18 · Delivery Confirmations Log
 
-**Route:** `/deliveries/queue/`  
-**Role:** DELIVERY
+**Route:** `/deliveries/queue/` · **Template:** `deliveries/index.html` · **Role:** DELIVERY, DISTRIBUTOR
 
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  Cola de Entregas                                                 │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ # │ Store │ Address │ Products │ Date │ Actions            │   │
-│  │ ─ │ ───── │ ─────── │ ──────── │ ──── │ ────────────────── │   │
-│  │003│Tienda1│Calle 10 │ 3 items  │01/07 │ [Confirmar entrega]│   │
-│  │004│Tienda2│Av. Univ.│ 1 item   │01/07 │ [Confirmar entrega]│   │
-│  └───────────────────────────────────────────────────────────┘   │
-│                                                                   │
-│  [Empty state: "No hay pedidos despachados en este momento."]     │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
+│  Cola de Entregas                      [+ Confirmar Entrega]     │
+│  (table: pedido · repartidor · foto ID (opcional, sin validar) · │
+│   confirmado en · [Editar][Eliminar — DISTRIBUTOR only])         │
+│  {empty state: "No hay confirmaciones de entrega."}               │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+See §5.1's 🔮 Future Upgrade — this table lists *past* confirmations, not a queue of pending dispatched orders.
 
 ---
 
-### W-19 · Delivery Confirmation Form
+### W-19 · Confirm Delivery
 
-**Route:** `/deliveries/<id>/confirm/`  
-**Role:** DELIVERY
-
-```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  ← Cola de entregas                                               │
-│  Confirmar Entrega — Pedido #003                                  │
-│                                                                   │
-│  ORDER SUMMARY                                                    │
-│  ┌─────────────────────────────────────────┐                      │
-│  │ Tienda: Tienda El Sol                   │                      │
-│  │ Dirección: Calle 10 de Agosto           │                      │
-│  │ Productos: Coca-Cola x10, Pepsi x5      │                      │
-│  └─────────────────────────────────────────┘                      │
-│                                                                   │
-│  PHOTO UPLOAD                                                     │
-│  ┌─────────────────────────────────────────┐                      │
-│  │  [Photo upload widget — Cloudinary]     │  ← browser-direct   │
-│  │                                         │     upload to preset │
-│  │  [Empty state: camera icon + ]          │                      │
-│  │   "Toma una foto como prueba de         │                      │
-│  │    entrega"]                            │                      │
-│  │                                         │                      │
-│  │  [After upload: thumbnail preview]      │                      │
-│  │  [Hidden input: public_id value]        │                      │
-│  └─────────────────────────────────────────┘                      │
-│                                                                   │
-│  [Error banner — invalid public_id]                               │
-│  "La foto debe ser tomada desde esta aplicación."                │
-│                                                                   │
-│  [Btn: Confirmar Entrega ✓]  ← DISABLED until photo uploaded     │
-│                               Min 48×48 px; primary style        │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-**UI Components Inventory:**
-
-| Component | Type | Notes |
-|-----------|------|-------|
-| Order summary card | Info panel | Store name, address, product summary |
-| Cloudinary upload widget | Third-party widget / `<input type="file">` styled | Browser-direct upload to Cloudinary upload preset |
-| Photo thumbnail preview | `<img>` | Shown after successful upload |
-| Hidden `public_id` field | `<input type="hidden">` | Populated by Cloudinary callback |
-| Invalid photo error | Alert (danger) | Shown on server-side rejection |
-| "Confirmar Entrega" button | Primary button | Disabled until `public_id` is populated in DOM |
-
-**Component States & Behaviors:**
-
-- **Before upload:** Button is `disabled`; upload widget shows instructional placeholder.
-- **After upload:** Thumbnail visible; `public_id` hidden field filled; button enabled.
-- **On server rejection:** Button re-enables; error banner shown; photo must be re-taken.
-- **Loading state:** Button shows spinner and is disabled during POST.
-
----
-
-### W-20 · Order Detail — Distributor View (with Audit)
-
-**Route:** `/orders/<id>/` (distributor session)  
-**Role:** DISTRIBUTOR
+**Route:** `/deliveries/new/confirm/` · **Template:** `deliveries/crear_confirmacion.html` · **Role:** DELIVERY
 
 ```
-┌─[Nav Shell W-04]──────────────────────────────────────────────────┐
-│  ← Dashboard                                                      │
-│  Pedido #001                           [Status: DELIVERED]       │
-│                                                                   │
-│  ORDER ITEMS TABLE (read-only)                                    │
-│                                                                   │
-│  [Btn: Ver historial de auditoría]  ← Secondary button           │
-│                                                                   │
-│  AUDIT LOG (expandable or always shown)                           │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │ Timestamp    │ Actor        │ Action       │ From → To    │   │
-│  │ ──────────── │ ──────────── │ ──────────── │ ──────────── │   │
-│  │01/07 14:00   │ Ana (STORE…) │ Pedido creado│ — → PENDING  │   │
-│  │01/07 14:10   │ Juan (VENDOR)│ Aceptado     │ PENDING→ACCEPTED│ │
-│  │01/07 15:00   │ Juan (VENDOR)│ Despachado   │ ACCEPTED→DISPATCHED│
-│  │01/07 16:30   │ Luis (DELIV.)│ Entregado    │ DISPATCHED→DELIVERED│
-│  └───────────────────────────────────────────────────────────┘   │
-│  (entries are append-only; no delete controls)                    │
-└───────────────────────────────────────────────────────────────────┘
+┌─[Nav Shell]────────────────────────────┐
+│  Confirmar Entrega                     │
+│  {{ formulario.as_p }}                 │
+│   order (dropdown — this distributor's │
+│   DISPATCHED orders only)              │
+│   photo_public_id (optional text)      │
+│   confirmed_at                         │
+│  [Btn: Guardar]  [Cancelar]            │
+└─────────────────────────────────────────┘
 ```
+
+No photo upload widget, no Cloudinary integration, no thumbnail preview, no disabled-until-photo-uploaded button state — `photo_public_id` is a plain optional text field per DR-09 (see §5.2).
 
 ---
 
 ## Appendix: Screen Inventory
 
-| Screen ID | Screen Name | Route (approx.) | Role(s) |
-|-----------|-------------|-----------------|---------|
-| W-01 | Login | `/accounts/login/` | All |
-| W-02 | Password Reset Request | `/accounts/password-reset/` | All |
-| W-03 | Set New Password | `/accounts/password-reset/<token>/` | All |
-| W-04 | Global Nav Shell | — (shared layout) | All |
-| W-05 | Distributor Operations Dashboard | `/distributor/dashboard/` | DISTRIBUTOR |
-| W-06 | Product List | `/catalog/products/` | DISTRIBUTOR |
-| W-07 | Create / Edit Product | `/catalog/products/new/` etc. | DISTRIBUTOR |
-| W-08 | Assign Inventory | `/catalog/inventory/assign/` | DISTRIBUTOR |
-| W-09 | User Management | `/accounts/users/` | DISTRIBUTOR |
-| W-10 | Vendor Dashboard | `/orders/vendor-dashboard/` | VENDOR |
-| W-11 | Order Detail — Vendor | `/orders/<id>/` | VENDOR |
-| W-11a | Modal: Accept Order | (inline modal on W-11) | VENDOR |
-| W-11b | Modal: Reject Order | (inline modal on W-11) | VENDOR |
-| W-12 | Store Owner Dashboard | `/orders/store-dashboard/` | STORE_OWNER |
-| W-13 | Place Order — Step 0: Select Store | `/orders/new/` | STORE_OWNER |
-| W-14 | Place Order — Step 1: Products | `/orders/new/` | STORE_OWNER |
-| W-15 | Place Order — Step 2: Review | `/orders/new/` | STORE_OWNER |
-| W-15b | Place Order — Step 3: Confirmation | `/orders/new/` | STORE_OWNER |
-| W-16 | Order Detail — Store Owner | `/orders/<id>/` | STORE_OWNER |
-| W-17 | Notification Center | `/accounts/notifications/` | STORE_OWNER |
-| W-18 | Delivery Queue | `/deliveries/queue/` | DELIVERY |
-| W-19 | Delivery Confirmation Form | `/deliveries/<id>/confirm/` | DELIVERY |
-| W-20 | Order Detail — Distributor | `/orders/<id>/` | DISTRIBUTOR |
+| ID | Screen | Route | Template | Role(s) |
+|----|--------|-------|----------|---------|
+| W-01 | Login | `/login/` | `registration/login.html` | All |
+| W-02 | Password Reset Request | `/accounts/password-reset/` | `accounts/solicitar_reset_password.html` | All |
+| W-03 | Set New Password | `/accounts/password-reset/<token>/` | `accounts/confirmar_reset_password.html` | All |
+| W-04 | Global Nav Shell | — | `templates/base.html` | All |
+| W-04b | Distributor Onboarding | `/accounts/distributors/new/` | `accounts/crear_distribuidor.html` | Superuser |
+| W-04c | Store Owner Self-Registration | `/accounts/join/<token>/` | `accounts/registrar_tienda.html` | Unauthenticated (token) |
+| W-05 | Distributor Dashboard | `/accounts/dashboard/` | `accounts/dashboard.html` | DISTRIBUTOR |
+| W-06 | Catálogo | `/catalog/` | `catalog/index.html` | DISTRIBUTOR |
+| W-07 | Create/Edit Product | `/catalog/products/new/` etc. | `catalog/crear_producto.html`, `editar_producto.html` | DISTRIBUTOR |
+| W-08 | Assign Inventory | `/catalog/inventory/assign/<vendor_id>/` | `catalog/crear_inventario.html` | DISTRIBUTOR |
+| W-09 | User Management | `/accounts/users/` | `accounts/index.html` | DISTRIBUTOR |
+| W-10 | Vendor Order List | `/orders/` | `orders/index.html` | VENDOR |
+| W-11 | Order Detail — Vendor | `/orders/<id>/` | `orders/ver_pedido.html` | VENDOR |
+| W-11b | Reject Order | `/orders/<id>/reject/` | `orders/rechazar_pedido.html` | VENDOR |
+| W-11c | Resolve Delivery Issue | `/orders/<id>/resolve-issue/` | `orders/resolver_incidencia.html` | VENDOR |
+| W-12 | Store Owner Order List | `/orders/` | `orders/index.html` | STORE_OWNER |
+| W-13 | Place Order | `/orders/new/` | `orders/crear_pedido.html` | STORE_OWNER |
+| W-14 | Add Item | `/orders/<order_id>/items/new/` | `orders/crear_item_pedido.html` | STORE_OWNER |
+| W-16 | Order Detail — Store Owner | `/orders/<id>/` | `orders/ver_pedido.html` | STORE_OWNER |
+| W-16b | Report Delivery Issue | `/orders/<id>/report-issue/` | `orders/reportar_incidencia.html` | STORE_OWNER |
+| W-17 | Notification List | `/accounts/notifications/` | `accounts/notificaciones.html` | All |
+| W-18 | Delivery Confirmations Log | `/deliveries/queue/` | `deliveries/index.html` | DELIVERY, DISTRIBUTOR |
+| W-19 | Confirm Delivery | `/deliveries/new/confirm/` | `deliveries/crear_confirmacion.html` | DELIVERY |
+| — | Audit Log | `/audit/` | `audit/index.html` | DISTRIBUTOR |
+| — | Home | `/` | `templates/home.html` | All (not role-filtered) |
 
 ---
 
-## Appendix B: Template & URL Implementation Status
+## Appendix B: Implementation Status
 
-### Implemented (Sprint 1 — Templates + Route Alignment)
+### Fully implemented
 
-| Wireframe | Screen | URL | Template |
-|-----------|--------|-----|----------|
-| W-04 | Global Nav Shell | — | `templates/base.html` |
-| W-09 | User Management | `accounts/users/` | `accounts/index.html` |
-| — | Distributor Detail | `accounts/distributors/<id>/` | `accounts/obtener_distribuidor.html` |
-| — | Create Distributor | `accounts/distributors/new/` | `accounts/crear_distribuidor.html` |
-| — | Edit Distributor | `accounts/distributors/<id>/edit/` | `accounts/editar_distribuidor.html` |
-| — | Create User | `accounts/users/new/` | `accounts/crear_usuario.html` |
-| — | Edit User | `accounts/users/<id>/edit/` | `accounts/editar_usuario.html` |
-| W-06/W-08 | Catalog Overview | `catalog/` | `catalog/index.html` |
-| W-07 | Create Product | `catalog/products/new/` | `catalog/crear_producto.html` |
-| W-07 | Edit Product | `catalog/products/<id>/edit/` | `catalog/editar_producto.html` |
-| — | Create Store | `catalog/stores/new/` | `catalog/crear_tienda.html` |
-| — | Edit Store | `catalog/stores/<id>/edit/` | `catalog/editar_tienda.html` |
-| W-08 | Assign Inventory | `catalog/inventory/assign/<vendor_id>/` | `catalog/crear_inventario.html` |
-| — | Edit Inventory | `catalog/inventory/<id>/edit/` | `catalog/editar_inventario.html` |
-| W-05 | Orders List | `orders/` | `orders/index.html` |
-| W-11/W-16/W-20 | Order Detail | `orders/<id>/` | `orders/ver_pedido.html` |
-| — | Create Order | `orders/new/` | `orders/crear_pedido.html` |
-| — | Edit Order | `orders/<id>/edit/` | `orders/editar_pedido.html` |
-| — | Add Item | `orders/<order_id>/items/new/` | `orders/crear_item_pedido.html` |
-| — | Edit Item | `orders/items/<id>/edit/` | `orders/editar_item_pedido.html` |
-| W-18 | Delivery Queue | `deliveries/queue/` | `deliveries/index.html` |
-| W-19 | Confirm Delivery | `deliveries/new/confirm/` | `deliveries/crear_confirmacion.html` |
-| — | Edit Confirmation | `deliveries/<id>/edit/` | `deliveries/editar_confirmacion.html` |
-| W-20 | Audit Log | `audit/` | `audit/index.html` |
+Every screen listed in the table above is live and reachable in the running app, RBAC-gated by `role_required`/`superuser_required` (`accounts/decorators.py`), and tenant-scoped by `distributor`.
 
-### Not Yet Implemented
+### Known gaps (not implemented, no route/template exists)
 
-| Wireframe | Screen | Blocked on |
-|-----------|--------|------------|
-| W-01 | Login | Django auth setup + login view |
-| W-02 | Password Reset Request | SMTP config + PasswordResetToken logic |
-| W-03 | Set New Password | Token validation view |
-| W-10 | Vendor Dashboard + JS Polling | Auth + role filter + `/api/orders/pending/` endpoint |
-| W-11a | Accept Order modal | `POST /orders/<id>/accept/` view + atomic transaction |
-| W-11b | Reject Order modal | `POST /orders/<id>/reject/` view |
-| W-12 | Store Owner Dashboard | Auth + role-scoped order list |
-| W-13–W-15b | Multi-step order wizard | Session-based form wizard + vendor auto-assign |
-| W-17 | Notification Center | Notification model + views |
-| W-19 (full) | Delivery confirm with Cloudinary | Cloudinary SDK + public_id validation |
+| Gap | Related requirement | Notes |
+|-----|---------------------|-------|
+| Vendor's own inventory view | UC-09, FR-04.2 | §3.6 — only exercised indirectly via accept-time stock errors |
+| Resubmit a rejected order | US-22 | §4.5 — `previous_order` field exists on the model, unused |
+| Cloudinary photo validation | FR-07.3, NFR-01.5 | **Deliberately superseded** by DR-09, not a gap to close — see §5.2 |
+| Delivery queue showing *pending* dispatched orders | UC-16, FR-07.1 | §5.1 — current screen shows past confirmations instead |
+| Real Resend SMTP for password reset | FR-01.3 | §1.3 — currently console backend (deploy-config task, Tier 5) |
+
+### 🔮 Future upgrades (working as designed, but the original aspirational UX is worth building later)
+
+- Role-scoped navigation (nav/home currently show every link to every role — §1.6, W-04)
+- Role-based post-login redirect instead of the shared home list (§1.1)
+- Multi-step order-placement wizard with a live running total (§4.1, W-13/W-14)
+- True stat-card dashboard with click-to-filter (§2.5, W-05)
+- Rendered QR code for the store-owner invite link, not just raw URL text (§1.5)
+- Confirmation modals instead of native browser `confirm()` dialogs, sitewide
+- Mobile responsive breakpoints (NFR-04.2 — currently absent from `styles.css`)
+- Brand colors/typography/logo applied to the UI (see `DESIGN.md` — currently just recorded as tokens, not wired in anywhere)
+- Split the combined `/catalog/` page into separate product/store/inventory views as data volume grows
 
 ---
 
