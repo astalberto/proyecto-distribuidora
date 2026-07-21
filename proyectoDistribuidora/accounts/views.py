@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
 from django.utils import timezone
 
-from catalog.models import Store, VendorInventory
+from catalog.models import ProductStatus, StockLevel, Store
 from orders.models import Order, OrderStatus
 from .decorators import role_required, superuser_required
 from .models import Distributor, Notification, PasswordResetToken, Role, User
@@ -189,10 +189,14 @@ def dashboard(request):
         'tiempo_promedio': tiempo_promedio,
     }
 
+    # Tier 4.5: replaces the per-vendor VendorInventory table with
+    # per-warehouse StockLevel (stock is centralized, not per-vendor).
     inventario = (
-        VendorInventory.objects.filter(vendor__distributor=distribuidor)
-        .select_related('vendor', 'product')
-        .order_by('product__name', 'vendor__email')
+        StockLevel.objects.filter(
+            product__distributor=distribuidor, product__status=ProductStatus.ACTIVE
+        )
+        .select_related('warehouse', 'product')
+        .order_by('product__name', 'warehouse__name')
     )
     stock_bajo_count = sum(
         1 for inv in inventario if inv.quantity < inv.product.low_stock_threshold

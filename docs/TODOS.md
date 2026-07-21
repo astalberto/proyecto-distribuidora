@@ -160,7 +160,159 @@ truth for delivery correctness.
   include/exclude orders, low-stock banner appears once inventory drops below
   threshold.
 
-## Tier 5 — Hardening & ship (Sprint 6)
+## Tier 4.5 — Product Catalog Expansion: Inventory, Discounts, Multi-Warehouse (Sprint 7) — DONE 2026-07-21
+
+Scoped via `/office-hours` + `/plan-eng-review` on 2026-07-21 — design
+doc at `~/.gstack/projects/astalberto-proyecto-distribuidora/Josue-master-design-20260721-163841.md`.
+Approach B ("ideal architecture") chosen over a flat-field minimal extension because the
+business's own multi-warehouse requirement (Ecuador distributor, currently one warehouse)
+would otherwise force a second migration later. Ships as one PR, not staged.
+**Re-confirmed (2026-07-21, CEO review, cross-model check):** the project stays
+local-execution only for now with no deployment planned, which reopened the question of
+whether Warehouse/StockLevel is over-scoped. Project owner confirmed multi-warehouse
+growth and eventual deployment are real future plans, not speculative — building the
+real model now while the data is still empty is cheaper than migrating populated data
+later. Architecture stands as decided.
+
+- [x] `Category` and `Brand` as real FK'd models (not free text) — referential integrity
+      for filtering, replaces the free-text approach considered and rejected in review.
+- [x] `Warehouse` model (single row today) + `StockLevel(product, warehouse)`, **replacing
+      `VendorInventory` as the lock target** in `orders/views.py`'s `aceptar_pedido`
+      (currently `VendorInventory.objects.select_for_update().filter(vendor=..., product_id__in=...)`
+      at `orders/views.py:158`). Decided during eng review over keeping `StockLevel` as
+      display-only, specifically to avoid the catalog UI and the order-accept flow
+      disagreeing about what's in stock. **Regression risk:** this touches the Tier 2
+      concurrency-critical path — the existing concurrent-accept and insufficient-stock
+      rollback tests must be re-verified against the new lock target, not just covered by
+      new tests in isolation.
+  - **Confirmed by the project owner, who runs the business (2026-07-21): stock is
+    centralized, not per-vendor.** (A cross-model outside-voice pass flagged this as
+    needing verification with someone who actually has authority over how the business
+    operates, not just a coding-session guess — confirmed the answerer has that
+    authority.) An outside-voice cross-model review caught that `VendorInventory` isn't just a stock
+    count — `orders/forms.py:57-61` filters which products a store owner can even order
+    to `Product.objects.filter(inventory__vendor=vendor, is_active=True)` (FR-05.3: each
+    vendor was previously assumed to personally carry a subset of the catalog,
+    route/van-sales style). **Resolved (via `/plan-ceo-review`, 2026-07-21):** `FR-05.3`'s
+    filter is replaced with "any active product in the distributor's catalog is
+    orderable" — `OrderItemForm`'s `product` queryset drops the `inventory__vendor=vendor`
+    filter entirely, keeping only `is_active` (now `status=ACTIVE`). No new
+    vendor↔product assignment model. Update `docs/requirements.md`'s FR-05.3 text to
+    match, since the old wording will otherwise describe behavior that no longer exists.
+  - **Accepted tradeoff:** centralizing locks widens `select_for_update()` contention from
+    per-vendor to tenant-wide on every accept (today, two different vendors' accepts never
+    contend; after this change, they can). No action required unless accept-time latency
+    becomes a real problem — noted here so it isn't mistaken for a bug later.
+  - `OrderItem` gets an explicit `warehouse` FK in this pass (not deferred) so
+    `aceptar_pedido`'s `StockLevel` lock is scoped by `(product, warehouse)` from day one
+    — otherwise "multi-warehouse ready" is cosmetic, since accept-time deduction would have
+    nowhere to route once a second warehouse exists.
+- [x] `Product.status` (Active/Inactive/Discontinued) replaces `is_active` (DR-06)
+      outright. Data migration required: `is_active=True → ACTIVE`,
+      `is_active=False → INACTIVE` — never auto-map to `DISCONTINUED`, which is a distinct
+      explicit action. Out-of-stock is derived automatically from `StockLevel`, never a
+      manual toggle.
+- [x] `sku`/`barcode` unique **per distributor**, via `UniqueConstraint(distributor, sku)`
+      (mirrors `VendorInventory`'s `unique_vendor_product` pattern at
+      `catalog/models.py:85-90`) — not field-level `unique=True`, which would wrongly
+      enforce global uniqueness across tenants.
+- [x] `Discount` model: `discount_type` (PERCENTAGE or FIXED_AMOUNT), date-range window,
+      stacking rule (at most one active discount per product), `current_price` computed as
+      a property (never stored — expiry needs no cleanup job), clamped at zero.
+      Product list/search views must `prefetch_related` discounts so `current_price` stays
+      O(1) query per page, not O(n) — the same N+1 class Tier 3 already fixed once for FK
+      joins.
+- [x] `ProductImage` (FK to `Product`, one `is_main` flag) via local Django `ImageField` —
+      not Cloudinary, to avoid introducing a second upload mechanism ahead of the
+      still-unwired Cloudinary target `CLAUDE.md` already documents for delivery photos.
+- [x] `ProductForm` adopts the `distributor=` kwarg pattern already used by
+      `StoreForm`/`VendorInventoryForm` (`catalog/forms.py:13-17`, `:33-36`) to scope the
+      new `Category`/`Brand` querysets to the caller's tenant — same class of bug Tier 1
+      already fixed once for `distributor` itself.
+- [x] `catalog/api_views.py`'s `ProductSerializer`/`ProductViewSet` updated in this same
+      pass (not deferred) to expose the new fields, following the existing cross-tenant FK
+      rejection pattern already used for `owner`/`vendor`/`product`.
+- [x] `AuditLog` entries on product create/update/deactivate — reuses the existing app
+      (Tier 3 already proved this pattern on order transitions), no new dependency
+      (`django-simple-history` considered and rejected in review).
+- [x] CSV import tool for the initial catalog bulk load — accepted in `/plan-ceo-review`
+      (2026-07-21) specifically to close the Status Quo pain named in the design doc
+      (manual re-entry from the distributor's existing spreadsheet). Ships in this same
+      pass, not deferred. See `~/.gstack/projects/astalberto-proyecto-distribuidora/ceo-plans/2026-07-21-catalog-expansion.md`.
+      **Failure handling:** row-level skip, not all-or-nothing — valid rows import, invalid
+      rows (duplicate SKU, missing category, malformed data) are skipped and listed in a
+      per-row error report so the user can fix and re-import just the failures.
+      **Guardrails (Section 3, CEO review):** file size cap, content-type/extension check,
+      and formula-injection sanitization (strip leading `=`/`+`/`-`/`@` from cell values
+      before storage) — closes CSV-upload attack surface that doesn't exist anywhere else
+      in this codebase today.
+- [x] Bundled low-stock digest notification — single `Notification` summarizing every
+      product crossing `low_stock_threshold`, instead of one notification per product.
+      Small extension of the existing `Notification` model (already used for order
+      events). Accepted in `/plan-ceo-review` (2026-07-21). **Trigger:** checked inside
+      `crear_producto`/`editar_producto`'s save path (same synchronous request-response
+      pattern as the rest of this codebase) — reflects state as of the last edit, not a
+      scheduled sweep; no new background-job infrastructure introduced.
+- [x] **IVA/tax handling — RESOLVED (2026-07-21):** `unit_price` is **IVA-exclusive**.
+      Ecuador's 15% IVA is calculated on top wherever a final charged amount is shown or
+      computed, never baked into the stored price. Keeps the tax rate changeable in one
+      place if it changes again, and keeps discount-percentage math (`Discount.current_price`)
+      computed against a clean base price.
+- [x] **`unit_of_measure` — RESOLVED (2026-07-21):** fixed `choices=` `CharField`, not a
+      separate lookup model. Closed set: `PIECE`, `BOX`, `PACK`, `BOTTLE`, `KG`, `LITER`.
+      Adding a 7th unit later is a code change + migration, not a data-entry task —
+      accepted tradeoff for simplicity on a field that changes rarely.
+- [x] **Barcode format — RESOLVED (2026-07-21):** free text, no EAN-13/UPC validation.
+      Ecuadorian retail commonly mixes real GS1 barcodes with internally-assigned codes for
+      repackaged/bulk goods; a strict validator would reject real products that don't have
+      a manufacturer barcode.
+- Implemented 2026-07-21: `catalog` migrations `0004`-`0007`, `orders` migration `0006`.
+  `VendorInventory` and its CRUD screens (W-08, the old "Asignar Inventario" flow) removed
+  entirely per the same session's decision — replaced by `StockLevel` + `editar_stock`
+  (per-product, single default warehouse today) and the dashboard's "Inventario por
+  almacén" table. Verified via `manage.py check`, `makemigrations --check`, `manage.py
+  migrate` against the real dev DB (1 pre-existing product correctly backfilled: sku,
+  status, placeholder category/brand), and 24 automated tests (`manage.py test catalog
+  orders`) covering: SKU uniqueness per distributor, `Discount.current_price` (percentage,
+  fixed-amount, expired, clamped-at-zero, overlap rejection), stock derivation, tenant
+  scoping on `ProductForm`/catalog views, CSV import (row-level skip + formula-injection
+  sanitization), the FR-05.3 resolution (`OrderItemForm` no longer vendor-scoped), and the
+  Tier 2 regression suite re-verified against `StockLevel` (deduction, insufficient-stock
+  rollback, sequential double-spend, **and a real multi-threaded concurrent-accept test**
+  — exactly one of two simultaneous accepts wins). Also live-smoke-tested every new/changed
+  view via Django's test client against the running dev DB, which caught and fixed one bug
+  not covered by the automated suite: `gestionar_descuento`/`editar_stock`/`quitar_descuento`
+  URLs declared `<int:id>` but the views expected `product_id` — a `TypeError` at request
+  time invisible to `manage.py check`.
+- **Not done, deferred:** CSV import has no downloadable template file (the required-columns
+  list is just prose on the import screen); `docs.requirements.md`'s DR-06 note about
+  deactivated-but-still-acceptable products isn't re-verified against the new `status`
+  field (behavior should be unchanged since `ACTIVE`-only scoping didn't change, but no
+  dedicated test asserts it). Both are small, low-risk follow-ups, not launch blockers.
+
+## Deferred from CEO review (2026-07-21) — not yet scheduled
+
+Surfaced during `/plan-ceo-review`'s expansion scan on Tier 4.5, deliberately deferred
+rather than bundled into that PR. See
+`~/.gstack/projects/astalberto-proyecto-distribuidora/ceo-plans/2026-07-21-catalog-expansion.md`
+for full reasoning.
+
+- [ ] Barcode camera-scan search (mobile web) — reads a barcode via device camera instead
+      of typing it, for warehouse staff doing physical counts. Needs camera permission
+      handling + a barcode-decoding dependency; do once the `barcode` field has real
+      production data and its format is settled (see Tier 4.5's open barcode-format
+      decision above).
+- [ ] Price-history timeline view per product — built from `AuditLog` entries Tier 4.5 is
+      already writing on every product change. Zero-risk future add since the data exists
+      either way; build once there's enough history to make a timeline meaningful.
+
+## Tier 5 — Automated test hardening (Sprint 6)
+
+Project stays local-execution only for now — no deployment planned (confirmed
+2026-07-21). Deploy config work is dropped, not deferred (see "Out of scope" below).
+Tests are kept: they protect against regressions regardless of deployment status, and
+Tier 4.5's `VendorInventory` → `StockLevel` migration explicitly depends on the
+concurrent-accept and insufficient-stock tests below being re-verified.
 
 - [ ] Unit tests: order state transitions, price-snapshot logic, password reset token
       expiry/single-use.
@@ -169,8 +321,10 @@ truth for delivery correctness.
       (Distributor A can't read Distributor B's data).
 - [ ] Playwright e2e: the 4 critical paths (place order → accept → dispatch → deliver;
       distributor dashboard view) + the error path + the security/RBAC path.
-- [ ] Production deploy config: WhiteNoise, `dj-database-url`, Procfile/Gunicorn, real
-      Cloudinary/Resend credentials via environment variables.
+
+**Out of scope (not deferred — no deployment planned):** production deploy config
+(WhiteNoise, `dj-database-url`, Procfile/Gunicorn, real Cloudinary/Resend credentials).
+Revisit only if a deployment target is actually decided.
 
 ## Cross-cutting / housekeeping
 

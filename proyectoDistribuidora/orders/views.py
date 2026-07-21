@@ -8,7 +8,7 @@ from django.utils import timezone
 from accounts.decorators import role_required
 from accounts.models import Notification
 from audit.models import AuditLog
-from catalog.models import VendorInventory
+from catalog.models import StockLevel, Warehouse
 from .models import Order, OrderItem, OrderStatus
 from .forms import OrderForm, OrderItemForm, ReportarIncidenciaForm, ResolverIncidenciaForm
 
@@ -98,6 +98,10 @@ def crear_item_pedido(request, order_id):
             item = formulario.save(commit=False)
             item.order = pedido
             item.unit_price_at_time = item.product.unit_price
+            # Tier 4.5: warehouse is server-side, never client-supplied —
+            # single default warehouse today, same pattern as
+            # unit_price_at_time above.
+            item.warehouse = Warehouse.get_or_create_default(pedido.store.distributor)
             item.save()
             return redirect('ver_pedido', id=order_id)
     else:
@@ -150,20 +154,24 @@ def aceptar_pedido(request, id):
             return redirect('ver_pedido', id=id)
 
         with transaction.atomic():
-            # Lock the vendor's inventory rows for every ordered product so
-            # a concurrent accept on another order can't double-spend the
-            # same stock (NFR-03.1, NFR-03.3, UC-11 step 3-4).
-            inventarios = {
-                inv.product_id: inv
-                for inv in VendorInventory.objects.select_for_update().filter(
-                    vendor=request.user,
+            # Tier 4.5: lock StockLevel(product, warehouse) rows — replaces
+            # VendorInventory as the lock target. Stock is centralized (not
+            # per-vendor, confirmed with the business 2026-07-21), so a
+            # concurrent accept on ANY order touching the same product+
+            # warehouse can't double-spend the same stock, tenant-wide
+            # (NFR-03.1, NFR-03.3, UC-11 step 3-4). Accepted tradeoff: lock
+            # contention widens from per-vendor to tenant-wide.
+            niveles = {
+                (nivel.product_id, nivel.warehouse_id): nivel
+                for nivel in StockLevel.objects.select_for_update().filter(
+                    warehouse_id__in={item.warehouse_id for item in items},
                     product_id__in=[item.product_id for item in items],
                 )
             }
             errores = []
             for item in items:
-                inv = inventarios.get(item.product_id)
-                disponible = inv.quantity if inv else 0
+                nivel = niveles.get((item.product_id, item.warehouse_id))
+                disponible = nivel.quantity if nivel else 0
                 if disponible < item.quantity:
                     errores.append(
                         f'{item.product.name}: disponible {disponible}, solicitado {item.quantity}'
@@ -184,13 +192,13 @@ def aceptar_pedido(request, id):
 
             deducciones = []
             for item in items:
-                inv = inventarios[item.product_id]
-                inv.quantity -= item.quantity
-                inv.save(update_fields=['quantity'])
+                nivel = niveles[(item.product_id, item.warehouse_id)]
+                nivel.quantity -= item.quantity
+                nivel.save(update_fields=['quantity'])
                 deducciones.append({
                     'product': item.product.name,
                     'quantity_deducted': item.quantity,
-                    'remaining_stock': inv.quantity,
+                    'remaining_stock': nivel.quantity,
                 })
 
             pedido.status = OrderStatus.ACCEPTED

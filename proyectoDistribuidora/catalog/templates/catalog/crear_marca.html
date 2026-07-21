@@ -1,9 +1,8 @@
 {% extends 'base.html' %}
-{% block title %}Asignar Inventario{% endblock %}
+{% block title %}Nueva Marca{% endblock %}
 {% block content %}
 <p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
-<h2>Asignar Inventario</h2>
-<p>Vendedor: <strong>{{ vendor.email }}</strong> ({{ vendor.role }})</p>
+<h2>Nueva Marca</h2>
 <form method="post">
   {% csrf_token %}
   {{ formulario.as_p }}

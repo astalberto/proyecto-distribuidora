@@ -4,8 +4,17 @@
 **Author:** UX/Product Design
 **Based on:** `docs/requirements.md` (business rules) + the actual running code as of 2026-07-19
 **Design tokens:** see [`DESIGN.md`](DESIGN.md) (brand colors, typography, logo assets — not yet applied to the app)
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-21 (added Tier 4.5 planned screens — see note below)
 **Roles in scope:** DISTRIBUTOR · VENDOR · STORE_OWNER · DELIVERY
+
+> **Tier 4.5 additions (2026-07-21, via `/plan-design-review`):** W-07, W-06, and
+> W-17 are extended below and two new screens (W-07b, W-20) are added for the
+> Product Catalog Expansion (`docs/TODOS.md` Tier 4.5 — SKU, barcode, category,
+> brand, discounts, images, CSV import). **These are planned, not yet
+> implemented** — marked `[PLANNED]` throughout, same convention as the rest of
+> this document distinguishing built vs. aspirational. Decided this session:
+> these screens stay unstyled, matching the current plain-table/Django-default
+> look — no brand tokens from DESIGN.md are wired in.
 
 > **This revision replaces the original pre-implementation draft (2026-07-01).** That draft described an aspirational UI (multi-step wizards, JS modals, stat cards, Cloudinary photo gating) written before any of it was built. The actual app is plain server-rendered Django templates with `<table border="1">` layouts, browser `confirm()` dialogs instead of modals, and no client-side framework. Every flow and wireframe below is corrected to match what's actually running; the original aspirational design is preserved as **🔮 Future Upgrade** call-outs so the vision isn't lost, just clearly labeled as not-yet-built.
 >
@@ -578,8 +587,18 @@ Layouts below reflect the actual rendered HTML: plain `<table border="1">` data 
 │   [Editar][Eliminar])                                            │
 │  ──────────                                                       │
 │  Productos                                  [+ Nuevo Producto]   │
-│  (table: nombre · descripción · precio · distribuidor · estado · │
-│   [Editar][Desactivar/Reactivar])                                │
+│                                       [+ Importar CSV] [PLANNED] │
+│                                                                    │
+│  BUSCAR Y FILTRAR (GET form)                          [PLANNED]  │
+│  [Buscar: nombre/SKU/código de barras____] [Categoría ▼]         │
+│  [Marca ▼] [Estado de stock ▼: Todos/En stock/Bajo/Agotado]      │
+│  [☐ Solo en promoción]  [Buscar]  [Limpiar]                      │
+│  Empty state: "No se encontraron productos con estos filtros.    │
+│  [Limpiar filtros]" — matches the W-17/W-18 empty-state pattern. │
+│                                                                    │
+│  (table: sku · nombre · categoría · marca · precio ·             │
+│   precio con descuento (si aplica) · estado · stock ·            │
+│   [Editar][Desactivar/Reactivar])                    [PLANNED]   │
 │  ──────────                                                       │
 │  Inventario de Vendedores                                        │
 │  "Para asignar inventario usa /catalog/inventory/assign/<id>/    │
@@ -591,12 +610,17 @@ Layouts below reflect the actual rendered HTML: plain `<table border="1">` data 
 
 Combines the original draft's separate W-06 (Product List) and W-08 (Assign Inventory grid) into the one real page. (🔮 Future Upgrade: split into separate tabs/pages as the app grows — this single page will get long once a distributor has more than a handful of products/stores.)
 
+`[PLANNED]` rows above are Tier 4.5 additions (search/filter, CSV import entry
+point, extended product table columns) — not yet implemented as of this
+document's last update.
+
 ---
 
 ### W-07 · Create / Edit Product
 
 **Route:** `/catalog/products/new/`, `/catalog/products/<id>/edit/` · **Role:** DISTRIBUTOR
 
+**Current (5 fields):**
 ```
 ┌─[Nav Shell]────────────────────────────┐
 │  ← Volver al Catálogo                  │
@@ -607,6 +631,101 @@ Combines the original draft's separate W-06 (Product List) and W-08 (Assign Inve
 │  [Btn: Guardar]  [Cancelar]            │
 └─────────────────────────────────────────┘
 ```
+
+**[PLANNED] Extended (Tier 4.5, 12 fields, grouped):**
+```
+┌─[Nav Shell]──────────────────────────────────────────────────────┐
+│  ← Volver al Catálogo                                             │
+│  Crear/Editar Producto                                            │
+│                                                                    │
+│  ── Identidad ──                                                  │
+│   name · sku · barcode                                            │
+│  ── Clasificación ──                                               │
+│   category (dropdown ▼) · brand (dropdown ▼)                      │
+│   unit_of_measure (dropdown ▼: Pieza/Caja/Paquete/Botella/Kg/Litro)│
+│  ── Precio y Stock ──                                              │
+│   description · unit_price                                        │
+│   status (dropdown ▼: Activo/Inactivo/Descontinuado)              │
+│   low_stock_threshold                                             │
+│  ── Imágenes ──                                                    │
+│   main_image (file) · additional_images (file, multiple)          │
+│                                                                    │
+│  [Btn: Guardar]  [Cancelar]                                       │
+│                                                                    │
+│  ── shown only when editing an existing product ──                │
+│  Descuento actual: {ninguno | "15% hasta 2026-08-01"}             │
+│  [link → W-07b: Gestionar descuento]                               │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+`is_active` boolean is replaced by the `status` dropdown per Tier 4.5's
+resolved DR-06 fork. Grouped into 4 plain `<fieldset><legend>` sections — no
+CSS/framework needed, still matches the unstyled aesthetic, but scannable at
+12 fields where the flat rendering (fine at 5 fields) would not be.
+
+---
+
+### W-07b · Manage Discount — NEW [PLANNED]
+
+**Route:** `/catalog/products/<id>/discount/` · **Role:** DISTRIBUTOR
+
+```
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver al producto                  │
+│  Gestionar Descuento — {product name}  │
+│  Precio regular: ${unit_price}         │
+│  {{ formulario.as_p }}                 │
+│   discount_type (radio: Porcentaje /   │
+│     Monto fijo)                        │
+│   discount_value                       │
+│   start_date · end_date                │
+│  Precio final (calculado): ${preview}  │
+│  [Btn: Guardar]  [Btn: Quitar descuento]  [Cancelar]│
+└─────────────────────────────────────────┘
+```
+
+Separate screen, not inline fields on W-07 — matches the existing pattern of
+`VendorInventory` assignment (W-08) being its own screen rather than crammed
+into the Product form.
+
+---
+
+### W-20 · CSV Import — NEW [PLANNED]
+
+**Route:** `/catalog/products/import/` · **Role:** DISTRIBUTOR
+
+```
+┌─[Nav Shell]────────────────────────────┐
+│  ← Volver al Catálogo                  │
+│  Importar Productos desde CSV          │
+│  "El archivo debe tener las columnas:  │
+│  nombre, sku, código de barras,        │
+│  categoría, marca, precio, unidad de   │
+│  medida, stock mínimo"                 │
+│  {{ formulario.as_p }}                 │
+│   archivo_csv (file, .csv only)        │
+│  [Btn: Importar]  [Cancelar]           │
+└─────────────────────────────────────────┘
+
+→ on submit, results screen:
+┌─[Nav Shell]────────────────────────────┐
+│  Resultado de Importación              │
+│  ✓ 47 productos importados             │
+│  ⚠ 3 filas omitidas:                   │
+│  ┌───────────────────────────────────┐ │
+│  │ Fila 12: SKU "ABC123" ya existe   │ │
+│  │ Fila 28: categoría "Lacteos" no   │ │
+│  │   encontrada                      │ │
+│  │ Fila 41: precio inválido          │ │
+│  └───────────────────────────────────┘ │
+│  [Volver al Catálogo]                  │
+└─────────────────────────────────────────┘
+```
+
+Row-level skip, not all-or-nothing — valid rows import, invalid rows are
+skipped and listed in this report. Loading state: browser's default loading
+indicator only, no custom "procesando..." UI — consistent with every other
+form submission in this app.
 
 ---
 
@@ -815,10 +934,19 @@ read-only
 │  (table: mensaje · pedido (link) · fecha · estado · [Marcar       │
 │   como leída] per unread row)                                    │
 │  {empty state: "No tienes notificaciones."}                      │
+│                                                                    │
+│  [PLANNED, Tier 4.5] Bundled low-stock digest example row:       │
+│  "⚠ 4 producto(s) con stock bajo: Arroz, Aceite, Azúcar,          │
+│   Leche" | — | 2026-07-22 | No leída | [Marcar como leída]       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 No blue-dot/grey-dot visual distinction as the original draft showed — read/unread is a text column ("Leída"/"No leída").
+
+**[PLANNED, Tier 4.5]:** one row per digest event (not one row per product) —
+`pedido` column blank for this row type since it's not order-related, same as
+the column already tolerating a null order for other non-order notification
+types.
 
 ---
 
@@ -872,7 +1000,9 @@ No photo upload widget, no Cloudinary integration, no thumbnail preview, no disa
 | W-05 | Distributor Dashboard | `/accounts/dashboard/` | `accounts/dashboard.html` | DISTRIBUTOR |
 | W-06 | Catálogo | `/catalog/` | `catalog/index.html` | DISTRIBUTOR |
 | W-07 | Create/Edit Product | `/catalog/products/new/` etc. | `catalog/crear_producto.html`, `editar_producto.html` | DISTRIBUTOR |
+| W-07b | Manage Discount `[PLANNED]` | `/catalog/products/<id>/discount/` | `catalog/gestionar_descuento.html` | DISTRIBUTOR |
 | W-08 | Assign Inventory | `/catalog/inventory/assign/<vendor_id>/` | `catalog/crear_inventario.html` | DISTRIBUTOR |
+| W-20 | CSV Import `[PLANNED]` | `/catalog/products/import/` | `catalog/importar_productos.html` | DISTRIBUTOR |
 | W-09 | User Management | `/accounts/users/` | `accounts/index.html` | DISTRIBUTOR |
 | W-10 | Vendor Order List | `/orders/` | `orders/index.html` | VENDOR |
 | W-11 | Order Detail — Vendor | `/orders/<id>/` | `orders/ver_pedido.html` | VENDOR |
@@ -892,6 +1022,19 @@ No photo upload widget, no Cloudinary integration, no thumbnail preview, no disa
 ---
 
 ## Appendix B: Implementation Status
+
+### Planned, not yet implemented (Tier 4.5)
+
+| Screen | Route | Notes |
+|--------|-------|-------|
+| W-07 (extended fields) | `/catalog/products/new/` etc. | Grows from 5 to 12 fields; see `docs/TODOS.md` Tier 4.5 |
+| W-07b | `/catalog/products/<id>/discount/` | New screen |
+| W-06 (search/filter, CSV entry point) | `/catalog/` | Extends existing page |
+| W-20 | `/catalog/products/import/` | New screen |
+| W-17 (digest row) | `/accounts/notifications/` | Extends existing page, no new route |
+
+Full field lists, states, and design decisions: see the W-07/W-07b/W-06/W-20/W-17
+entries above. Design review completed 2026-07-21 via `/plan-design-review`.
 
 ### Fully implemented
 

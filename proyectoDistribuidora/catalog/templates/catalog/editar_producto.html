@@ -3,12 +3,56 @@
 {% block content %}
 <p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
 <h2>Editar Producto: {{ producto.name }}</h2>
-<form method="post">
+<form method="post" enctype="multipart/form-data">
   {% csrf_token %}
-  {{ formulario.as_p }}
+  {{ formulario.non_field_errors }}
+
+  <fieldset>
+    <legend>Identidad</legend>
+    <p>{{ formulario.name.label_tag }} {{ formulario.name }} {{ formulario.name.errors }}</p>
+    <p>{{ formulario.sku.label_tag }} {{ formulario.sku }} {{ formulario.sku.errors }}</p>
+    <p>{{ formulario.barcode.label_tag }} {{ formulario.barcode }} {{ formulario.barcode.errors }}</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Clasificación</legend>
+    <p>{{ formulario.category.label_tag }} {{ formulario.category }} {{ formulario.category.errors }}</p>
+    <p>{{ formulario.brand.label_tag }} {{ formulario.brand }} {{ formulario.brand.errors }}</p>
+    <p>{{ formulario.unit_of_measure.label_tag }} {{ formulario.unit_of_measure }} {{ formulario.unit_of_measure.errors }}</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Precio y Stock</legend>
+    <p>{{ formulario.description.label_tag }} {{ formulario.description }} {{ formulario.description.errors }}</p>
+    <p>{{ formulario.unit_price.label_tag }} {{ formulario.unit_price }} {{ formulario.unit_price.errors }}</p>
+    <p>{{ formulario.status.label_tag }} {{ formulario.status }} {{ formulario.status.errors }}</p>
+    <p>{{ formulario.low_stock_threshold.label_tag }} {{ formulario.low_stock_threshold }} {{ formulario.low_stock_threshold.errors }}</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Imágenes</legend>
+    {% for img in producto.images.all %}
+      <p>{% if img.is_main %}Principal{% else %}Adicional{% endif %}: {{ img.image.name }}</p>
+    {% endfor %}
+    <p>{{ formulario.main_image.label_tag }} {{ formulario.main_image }} {{ formulario.main_image.errors }}</p>
+    <p>{{ formulario.additional_images.label_tag }} {{ formulario.additional_images }} {{ formulario.additional_images.errors }}</p>
+  </fieldset>
+
   <p>
     <input type="submit" value="Actualizar">
     <a href="{% url 'index_catalog' %}">Cancelar</a>
   </p>
 </form>
+
+<hr>
+<p>
+  Stock: {{ producto.total_stock }}
+  <a href="{% url 'editar_stock' producto.id %}">Editar stock</a>
+</p>
+<p>
+  {% with descuento=producto.active_discount %}
+    Descuento actual: {% if descuento %}{{ descuento.get_discount_type_display }} {{ descuento.discount_value }} hasta {{ descuento.end_date }}{% else %}ninguno{% endif %}
+  {% endwith %}
+  <a href="{% url 'gestionar_descuento' producto.id %}">Gestionar descuento</a>
+</p>
 {% endblock %}

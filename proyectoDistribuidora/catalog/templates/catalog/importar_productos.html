@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Importar Productos{% endblock %}
+{% block content %}
+<p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
+<h2>Importar Productos desde CSV</h2>
+<p>
+  El archivo debe tener las columnas: nombre, sku, codigo_barras, categoria,
+  brand, precio, unidad_medida, stock_minimo. Las categorías y marcas deben
+  existir previamente. Filas inválidas se omiten y se reportan al final —
+  el resto del archivo sí se importa.
+</p>
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Importar">
+    <a href="{% url 'index_catalog' %}">Cancelar</a>
+  </p>
+</form>
+{% endblock %}

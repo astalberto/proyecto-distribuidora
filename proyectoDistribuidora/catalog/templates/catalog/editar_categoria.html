@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
-{% block title %}Editar Inventario{% endblock %}
+{% block title %}Editar Categoría{% endblock %}
 {% block content %}
 <p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
-<h2>Editar Inventario: {{ inventario.vendor }} — {{ inventario.product }}</h2>
+<h2>Editar Categoría: {{ categoria.name }}</h2>
 <form method="post">
   {% csrf_token %}
   {{ formulario.as_p }}

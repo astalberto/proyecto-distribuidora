@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Gestionar Descuento{% endblock %}
+{% block content %}
+<p><a href="{% url 'editar_producto' producto.id %}">← Volver al producto</a></p>
+<h2>Gestionar Descuento — {{ producto.name }}</h2>
+<p>Precio regular: ${{ producto.unit_price }}</p>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.non_field_errors }}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Guardar">
+    <a href="{% url 'editar_producto' producto.id %}">Cancelar</a>
+  </p>
+</form>
+<form method="post" action="{% url 'quitar_descuento' producto.id %}" onsubmit="return confirm('¿Quitar el descuento de este producto?')">
+  {% csrf_token %}
+  <input type="submit" value="Quitar descuento">
+</form>
+{% endblock %}

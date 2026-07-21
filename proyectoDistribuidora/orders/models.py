@@ -1,7 +1,7 @@
 from django.db import models
 
 from accounts.models import User
-from catalog.models import Store, Product
+from catalog.models import Store, Product, Warehouse
 
 
 class OrderStatus(models.TextChoices):
@@ -83,6 +83,17 @@ class OrderItem(models.Model):
     product = models.ForeignKey(
         Product,
         on_delete=models.CASCADE
+    )
+
+    # Tier 4.5: explicit warehouse so aceptar_pedido's StockLevel lock is
+    # scoped by (product, warehouse) from day one — otherwise "multi-
+    # warehouse ready" is cosmetic, since accept-time deduction would have
+    # nowhere to route once a second warehouse exists. Set server-side from
+    # the store's distributor's default warehouse, never client-supplied.
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="order_items"
     )
 
     quantity = models.PositiveIntegerField()

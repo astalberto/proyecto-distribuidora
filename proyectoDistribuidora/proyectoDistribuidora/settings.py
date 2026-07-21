@@ -152,6 +152,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
+# Product images (Tier 4.5) — local storage, not Cloudinary (see docs/TODOS.md).
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 AUTH_USER_MODEL = 'accounts.User'
 
 LOGIN_URL = 'login'

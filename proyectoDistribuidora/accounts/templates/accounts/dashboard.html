@@ -94,12 +94,12 @@
   </tbody>
 </table>
 
-<h3>Inventario por vendedor</h3>
+<h3>Inventario por almacén</h3>
 <table border="1">
   <thead>
     <tr>
       <th>Producto</th>
-      <th>Vendedor</th>
+      <th>Almacén</th>
       <th>Cantidad</th>
       <th>Umbral de stock bajo</th>
     </tr>
@@ -108,7 +108,7 @@
     {% for inv in inventario %}
     <tr{% if inv.quantity < inv.product.low_stock_threshold %} class="error"{% endif %}>
       <td>{{ inv.product.name }}</td>
-      <td>{{ inv.vendor.email }}</td>
+      <td>{{ inv.warehouse.name }}</td>
       <td>
         {{ inv.quantity }}
         {% if inv.quantity < inv.product.low_stock_threshold %} — ⚠ Stock bajo{% endif %}
@@ -116,7 +116,7 @@
       <td>{{ inv.product.low_stock_threshold }}</td>
     </tr>
     {% empty %}
-    <tr><td colspan="4">Sin inventario asignado todavía.</td></tr>
+    <tr><td colspan="4">Sin stock registrado todavía.</td></tr>
     {% endfor %}
   </tbody>
 </table>

@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
@@ -27,3 +29,10 @@ urlpatterns = [
     path('api/token-auth/', obtain_auth_token, name='api_token_auth'),
     path('api-auth/', include('rest_framework.urls')),
 ]
+
+# Project stays local-execution only for now (docs/TODOS.md) — serve media
+# via Django itself rather than deferring to a not-yet-planned WhiteNoise/
+# nginx setup. DEBUG-gated is still correct practice even for a local-only
+# deployment target.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

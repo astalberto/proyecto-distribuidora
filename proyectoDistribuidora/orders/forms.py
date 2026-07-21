@@ -1,5 +1,5 @@
 from django import forms
-from catalog.models import Store, Product
+from catalog.models import ProductStatus, Store, Product
 from .models import Order, OrderItem
 
 
@@ -54,8 +54,10 @@ class OrderItemForm(forms.ModelForm):
     def __init__(self, *args, vendor=None, **kwargs):
         super().__init__(*args, **kwargs)
         if vendor is not None:
-            # FR-05.3: only products actually stocked by the order's
-            # assigned vendor can be ordered.
+            # FR-05.3 (Tier 4.5 resolution, 2026-07-21): stock is centralized,
+            # not per-vendor, so any active product in the distributor's
+            # catalog is orderable regardless of which vendor is assigned —
+            # the old inventory__vendor filter is gone, not just relaxed.
             self.fields['product'].queryset = Product.objects.filter(
-                inventory__vendor=vendor, is_active=True
-            ).distinct()
+                distributor=vendor.distributor, status=ProductStatus.ACTIVE
+            )
