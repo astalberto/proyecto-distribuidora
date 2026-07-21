@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Editar Tienda{% endblock %}
+{% block content %}
+<p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
+<h2>Editar Tienda: {{ tienda.name }}</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Actualizar">
+    <a href="{% url 'index_catalog' %}">Cancelar</a>
+  </p>
+</form>
+{% endblock %}

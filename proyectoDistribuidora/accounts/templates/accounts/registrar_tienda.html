@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Registrar mi tienda{% endblock %}
+{% block content %}
+<h2>Registrar mi tienda — {{ distribuidor.name }}</h2>
+<p>Completa tus datos para crear tu cuenta y empezar a hacer pedidos a {{ distribuidor.name }}.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Crear mi cuenta">
+  </p>
+</form>
+{% endblock %}

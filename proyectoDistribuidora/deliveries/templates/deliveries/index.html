@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Cola de Entregas{% endblock %}
+{% block content %}
+<h2>Cola de Entregas</h2>
+<p><a href="{% url 'crear_confirmacion' %}">+ Confirmar Entrega</a></p>
+
+<table border="1">
+  <thead>
+    <tr>
+      <th>Pedido</th>
+      <th>Repartidor</th>
+      <th>Foto ID (opcional, sin validar)</th>
+      <th>Confirmado en</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in confirmaciones %}
+    <tr>
+      <td>{{ c.order }}</td>
+      <td>{{ c.delivery_user }}</td>
+      <td><code>{{ c.photo_public_id }}</code></td>
+      <td>{{ c.confirmed_at|date:"d/m/Y H:i" }}</td>
+      <td>
+        <a href="{% url 'editar_confirmacion' c.id %}">Editar</a> |
+        <a href="{% url 'eliminar_confirmacion' c.id %}" onclick="return confirm('¿Eliminar confirmación?')">Eliminar</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No hay confirmaciones de entrega.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

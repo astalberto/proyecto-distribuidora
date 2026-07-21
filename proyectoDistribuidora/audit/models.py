@@ -17,6 +17,11 @@ class AuditLog(models.Model):
 
     entity_id = models.CharField(max_length=100)
 
+    # DR-04: typed columns for order-status transitions; blank for non-transition events
+    previous_status = models.CharField(max_length=20, blank=True)
+
+    new_status = models.CharField(max_length=20, blank=True)
+
     timestamp = models.DateTimeField(auto_now_add=True)
 
     details = models.JSONField(default=dict)

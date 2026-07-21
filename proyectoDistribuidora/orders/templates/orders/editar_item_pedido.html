@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Editar Item — Pedido #{{ item.order.id }}{% endblock %}
+{% block content %}
+<p><a href="{% url 'ver_pedido' item.order.id %}">← Volver al pedido</a></p>
+<h2>Editar Item: {{ item.product }} (Pedido #{{ item.order.id }})</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Actualizar">
+    <a href="{% url 'ver_pedido' item.order.id %}">Cancelar</a>
+  </p>
+</form>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Resolver Incidencia — Pedido #{{ pedido.id }}{% endblock %}
+{% block content %}
+<p><a href="{% url 'ver_pedido' pedido.id %}">← Volver al pedido</a></p>
+<h2>Resolver Incidencia — Pedido #{{ pedido.id }}</h2>
+<p>Tienda: <strong>{{ pedido.store }}</strong></p>
+<p><strong>Problema reportado:</strong><br>{{ pedido.issue_description|linebreaksbr }}</p>
+<form method="post" onsubmit="return confirm('¿Confirmas que quieres marcar esta incidencia como resuelta?')">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Marcar como resuelta">
+    <a href="{% url 'ver_pedido' pedido.id %}">Cancelar</a>
+  </p>
+</form>
+{% endblock %}

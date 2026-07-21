@@ -3,8 +3,74 @@
 **Project:** proyecto-distribuidora  
 **Client:** ISBER Solutions, Loja, Ecuador  
 **Team:** 2 students, 1 semester (~3 months build time)  
-**Status:** Pre-implementation (architecture approved, eng review cleared)  
-**Last updated:** 2026-05-24
+**Status:** In progress — generic CRUD scaffolding built for all 5 apps; auth/RBAC/tenant isolation/order-lifecycle business logic not yet implemented (see Implementation Status below)  
+**Last updated:** 2026-07-15
+
+---
+
+## Implementation Status & Known Issues
+
+This section tracks divergence between this document and the actual state of `proyectoDistribuidora/` — read it before treating any Sprint 1-6 backlog item below as done. Last verified: 2026-07-15, against commit `d3795a6`.
+
+### Currently broken — environment does not run
+
+`manage.py check` fails with `ModuleNotFoundError: No module named 'rest_framework'` on the current dev machine. Commit `d3795a6` added `rest_framework` / `rest_framework.authtoken` to `INSTALLED_APPS` and imports DRF in `catalog/api_views.py` and the root `urls.py`, but the project's `.venv` never had `djangorestframework` installed.
+
+Separately, `requirements.txt` (repo root) pins `Django==5.2.2`, while the `.venv` actually has `Django==6.0.6` installed and running. This is not just drift to reconcile — **it's a hard Python-version constraint**: the team's dev machine runs **Python 3.14.6**, and Django did not support Python 3.14 until the **6.0** release; Django 5.2 (and the 4.2 line referenced further down in Technical Constraints) do not support Python 3.14 at all. So `requirements.txt` must specify `Django>=6.0`, not `5.2.2` or `4.2`, independent of whatever happens to already be installed locally.
+
+`psycopg2-binary==2.9.9` was also newly added to `requirements.txt` in the same commit — its Python 3.14 wheel availability has not been verified yet and should be checked before relying on it; a newer `psycopg2-binary` release may be required.
+
+None of the above has been fixed yet — this is a documentation pass only. The next pass that touches code must resolve this before anything else can be verified.
+
+### Template shadowing bug
+
+Commit `d3795a6` added `catalog/templates/base.html` (includes a login/logout session bar and a `{% static %}`-linked stylesheet) but it is currently **dead code**: Django's template loader checks `TEMPLATES[0]['DIRS']` (`proyectoDistribuidora/templates/`) before app directories, and the older, plain `proyectoDistribuidora/templates/base.html` (no auth awareness, no stylesheet) lives in `DIRS` and wins every render. The two `base.html` files need to be consolidated into the one in `DIRS` — not done yet.
+
+### Undocumented API surface — DRF catalog API
+
+Commit `d3795a6` added a full CRUD REST API for the catalog app that is **not** part of the originally designed architecture (the Component Diagram / Component Interface Summary above only ever specified one JSON endpoint: `GET /api/orders/pending/`, for the vendor's 30-second dashboard poll). This is being kept as an intentional expansion of scope, so it needs to be treated as a first-class part of the design going forward:
+
+| Endpoint | Method(s) | Auth | Notes |
+|----------|-----------|------|-------|
+| `/api/stores/` | GET/POST/PUT/PATCH/DELETE | Token or session | `StoreViewSet`, full CRUD |
+| `/api/products/` | GET/POST/PUT/PATCH/DELETE | Token or session | `ProductViewSet`, full CRUD |
+| `/api/inventory/` | GET/POST/PUT/PATCH/DELETE | Token or session | `VendorInventoryViewSet`, full CRUD |
+| `/api/token-auth/` | POST | — | DRF `obtain_auth_token`, issues a token for the above |
+
+**Not yet safe to use in production:** none of these viewsets scope by tenant or restrict by role — any authenticated user of any role, from any distributor, can currently read and write any other distributor's stores/products/inventory through this API. This must be closed (tenant-scoped `get_queryset` + a DISTRIBUTOR-only permission class) before this API surface is exposed beyond local dev. Tracked against FR-02.5 / NFR-01.4 (tenant isolation must be architecturally impossible to bypass — it currently isn't, via this path).
+
+### RBAC / tenant isolation gap (FR-02.3–FR-02.5, NFR-01.2–NFR-01.4) — RESOLVED 2026-07-16
+
+Closed in the Sprint 1 pass (see DR-08 above for the follow-on account-provisioning work): `role_required`/`superuser_required` decorators (`accounts/decorators.py`) applied across every app; every queryset scoped by `distributor` (directly or transitively); password reset implemented (`solicitar_reset_password`/`confirmar_reset_password`); the catalog DRF API tenant/role-scoped (`IsDistributor` permission + scoped `get_queryset`). Verified via `manage.py check` and a test-client smoke test. Login/logout (Django's built-in views) were already working.
+
+### Order integrity gap (FR-05.4, FR-06.2–FR-06.5, FR-09.1–FR-09.2) — RESOLVED 2026-07-16
+
+Closed in the Sprint 3 pass:
+- `OrderForm` now only exposes `store` (status/`previous_order`/`rejection_reason` are never client-editable). `editar_pedido`/`eliminar_pedido` (the generic edit that let status be set directly) are removed entirely, replaced by dedicated `aceptar_pedido`/`rechazar_pedido`/`despachar_pedido`/`cancelar_pedido` views (`orders/views.py`) — each gated to the correct role and current status.
+- `aceptar_pedido` wraps the stock check + deduction + status transition in a single `transaction.atomic()` block with `select_for_update()` on the affected `VendorInventory` rows (DR-01, NFR-03.1, NFR-03.3) — insufficient stock rolls back with a per-item error message and the order stays `PENDING` (NFR-03.2); nothing is written until every item clears the check.
+- `OrderItemForm` no longer accepts `unit_price_at_time` from the client — `orders/views.py` snapshots it server-side from `Product.unit_price` on both create and edit. The `product` field is also now scoped to `Product.objects.filter(inventory__vendor=<order's vendor>, is_active=True)`, closing the FR-05.3 gap (only products actually stocked by the assigned vendor are selectable) as a side effect.
+- `GET /api/orders/pending/` (root `urls.py`, `orders.views.pending_orders_api`) added as its own endpoint, distinct from the catalog DRF API — vendor-scoped, `role_required('VENDOR')`. The vendor order list (`orders/templates/orders/index.html`) polls it every 30s via plain JS and prepends newly-arrived `PENDING` orders without a page reload (FR-06.6, FR-10.1, US-10).
+- `AuditLog` writes on the original accept/reject/dispatch/cancel transitions are now also in place (backfilled 2026-07-19 — see the Tier 3 section below); this line previously said they were still missing. In-app notifications on `aceptar_pedido`/`rechazar_pedido`/`despachar_pedido` are now also in place (Tier 4, see below) — `cancelar_pedido` doesn't notify anyone, since it's the store owner's own action and no FR-10 sub-item requires it. Resubmitting a rejected order (US-22) is still open — `previous_order` linking exists on the model but nothing sets it yet.
+- **Cloudinary `photo_public_id` validation (FR-07.3/NFR-01.5) — SUPERSEDED 2026-07-18, see DR-09.** Photo-based proof-of-delivery was dropped from scope entirely, not just the Cloudinary SDK piece — replaced by a store-owner-confirms-receipt flow. `photo_public_id` is now an optional, unvalidated field with no security role.
+
+### Tier 3 gap (FR-08.1, FR-08.3, FR-09.1–FR-09.3, NFR-02.5, NFR-02.6) — RESOLVED 2026-07-19
+
+- `AuditLog` writes backfilled onto the original `aceptar_pedido`/`rechazar_pedido`/`despachar_pedido`/`cancelar_pedido` views and onto `deliveries.crear_confirmacion`'s `DISPATCHED → DELIVERED` transition — every order status transition now has an audit trail, not just the DR-09 ones. `aceptar_pedido`'s entry also captures the per-item inventory deduction (FR-09.2) inside its `details`, and a failed accept (insufficient stock) now writes its own `order_accept_failed` entry (FR-09.3).
+- New distributor operations dashboard: `accounts/dashboard.html` (`/accounts/dashboard/`, `role_required('DISTRIBUTOR')`) — orders grouped by status, the 20 most recent orders, and inventory per product per vendor with a low-stock row highlight (FR-08.1, FR-08.3). Linked from the nav for `DISTRIBUTOR` users. Extended in the Tier 4 pass below with filters and summary metrics.
+- `select_related`/`prefetch_related` + `Order` indexes (NFR-02.5, NFR-02.6): `Order` gained a composite index on `(vendor, status)` and one on `store`. Fixed N+1 query patterns across every list view that joins related data: `orders/index.html` and `ver_pedido.html` (store/vendor), `pending_orders_api` (item count was doing one `COUNT` query per order — now a single `annotate`), `catalog/index.html` (store's distributor/owner/vendor, product's distributor, inventory's vendor/product), `deliveries/index.html` (order/delivery_user), `audit/index.html` (acting user).
+
+### Tier 4 gap (FR-04.5, FR-08.2, FR-08.4, FR-10.2–FR-10.4, US-16, US-21) — RESOLVED 2026-07-19
+
+- Notification writes on `aceptar_pedido`/`rechazar_pedido`/`despachar_pedido` (FR-10.2, FR-10.3) — the last three order transitions that didn't notify the store owner. `deliveries.crear_confirmacion` (`DELIVERED`) and the DR-09 transitions already did.
+- Unread notification count on every page load (US-16): a new context processor (`accounts/context_processors.py:notifications`, registered in `settings.py`) adds `unread_notification_count` to every template context for any authenticated user — not gated to `STORE_OWNER`, since `VENDOR` and `DELIVERY` also receive notifications via DR-09. Shown in the nav in `base.html`.
+- Notifications list + mark-as-read/mark-all-read (US-16): `accounts/notificaciones.html` (`/accounts/notifications/`) plus the two POST-only actions, all `role_required` to any of the four roles (`Role.values`).
+- Dashboard filters (FR-08.2): date range, vendor, store, status — GET params on `/accounts/dashboard/`, applied to both the order list and the summary metrics below.
+- Summary metrics (FR-08.4): total orders, fulfilled (`CONFIRMED`), rejected, and average fulfillment time (computed from `updated_at - created_at` for `CONFIRMED` orders — `updated_at` reliably reflects the moment an order reached `CONFIRMED` regardless of whether it went through the direct confirm-receipt path or the report-issue → resolve-issue path, since that final status-setting save is always the last write). Filterable via the same vendor/date-range filters.
+- Low-stock alert badge (FR-04.5, US-21): a summary banner ("⚠ N producto(s) con stock bajo") at the top of the dashboard, in addition to the existing per-row highlight and ⚠ marker in the inventory table (the latter already existed in `catalog/index.html`; the dashboard's inventory table didn't have the ⚠ text marker before this pass, only the CSS highlight — now has both, matching `catalog/index.html`).
+
+### Repo hygiene (flagged, not evaluated further here)
+
+Commit `d3795a6` also added a 112KB `proyectoDistribuidora.zip` at the repo root — very likely an accidental commit (e.g., a local backup archive), not a real project artifact. Worth removing, but that's a version-control decision for the team, not addressed in this document.
 
 ---
 
@@ -59,14 +125,19 @@ erDiagram
     Store {
         string id PK
         string name
+        string address
+        string phoneNumber
         string distributorId FK
         string ownerId FK
+        string vendorId FK "nullable — default vendor; auto-populates Order.vendor (DR-01)"
     }
     Product {
         string id PK
         string name
         string description
         decimal unitPrice
+        boolean isActive "DR-06: soft-delete flag"
+        int lowStockThreshold "DR-05: default 5; alert trigger for distributor dashboard"
         string distributorId FK
     }
     VendorInventory {
@@ -79,6 +150,7 @@ erDiagram
         string storeId FK
         string vendorId FK
         OrderStatus status
+        string rejectionReason "optional — set by vendor when REJECTED"
         string previousOrderId FK "nullable — links resubmissions to their rejected predecessor"
         datetime createdAt
         datetime updatedAt
@@ -110,20 +182,33 @@ erDiagram
         string action
         string entityType
         string entityId
+        string previousStatus "DR-04: blank for non-transition events"
+        string newStatus "DR-04: blank for non-transition events"
         datetime timestamp
         json details
+    }
+    Notification {
+        string id PK
+        string userId FK
+        string orderId FK "nullable"
+        string message
+        boolean isRead
+        datetime createdAt
     }
 
     Distributor ||--o{ User : "has"
     Distributor ||--o{ Store : "owns"
     Distributor ||--o{ Product : "manages"
     User ||--o{ Store : "owns (STORE_OWNER)"
+    User ||--o| Store : "assigned to (VENDOR)"
     User ||--o{ Order : "processes (VENDOR)"
     User ||--o{ DeliveryConfirmation : "submits (DELIVERY)"
     User ||--o{ AuditLog : "generates"
     User ||--o{ PasswordResetToken : "requests"
+    User ||--o{ Notification : "receives"
     Store ||--o{ Order : "places"
     Order ||--o{ OrderItem : "contains"
+    Order ||--o{ Notification : "triggers"
     Product ||--o{ OrderItem : "appears in"
     Product ||--o{ VendorInventory : "stocked in"
     Order ||--o| DeliveryConfirmation : "confirmed by"
@@ -133,9 +218,105 @@ erDiagram
 ### Order Status State Machine
 
 ```
-PENDING → ACCEPTED → DISPATCHED → DELIVERED
+PENDING → ACCEPTED → DISPATCHED → DELIVERED → CONFIRMED
+                                            → DELIVERY_ISSUE → CONFIRMED
 PENDING → REJECTED → (new Order with previousOrderId pointing back)
 ```
+
+Per DR-09: `DELIVERED` is non-terminal — it means the delivery person dropped
+the order off, awaiting the store owner's confirmation. The store owner then
+moves it to `CONFIRMED` (received as expected) or `DELIVERY_ISSUE` (a
+dispute); resolving an issue moves it back to `CONFIRMED`.
+
+---
+
+## Design Decisions (Gap Resolutions)
+
+Resolved before prototype design. Each decision closes a gap identified in the BA review.
+
+### DR-01 — Vendor-to-Store Assignment
+
+**Gap:** No mechanism assigned a vendor to an order at creation time (`Order.vendor` was non-nullable but unpopulated).
+
+**Decision:** Each `Store` has a nullable `vendor FK`. The distributor sets this when creating or editing a store. When a store owner places an order, `Order.vendor` is auto-populated from `store.vendor`; no vendor selection step exists in the order flow.
+
+**Edge case:** If a store has no vendor assigned, the Place Order action is blocked and the store owner sees: *"Tu tienda no tiene un vendedor asignado. Contacta al distribuidor."*
+
+---
+
+### DR-02 — Delivery Order Visibility
+
+**Gap:** No per-delivery-person assignment mechanism existed; "assigned to their route" was undefined.
+
+**Decision:** For MVP, all `DELIVERY` users within the same distributor see all `DISPATCHED` orders. They self-select on a first-come, first-served basis. `DeliveryConfirmation.delivery_user` records who confirmed. Route/zone assignment is post-MVP (see Out of Scope).
+
+---
+
+### DR-03 — In-App Notifications
+
+**Gap:** `STORE_OWNER` notifications (US-12, US-13, US-16) had no model or delivery mechanism.
+
+**Decision:** A `Notification` model is added (fields: `user FK`, `order FK nullable`, `message`, `is_read`, `created_at`). Notifications are written server-side on every order status transition. Store owners see their unread count on page load — no real-time polling for store owners in MVP. Vendor 30-second polling is unchanged.
+
+---
+
+### DR-04 — AuditLog Typed Status Fields
+
+**Gap:** `AuditLog` stored everything in `details JSONField`; FR-09.1 requires queryable `previous_status` / `new_status`.
+
+**Decision:** Two `CharField` columns (`previous_status`, `new_status`) are added to `AuditLog`. They are blank for non-transition events (e.g., catalog changes). The `details` field is retained for additional context (quantities, before/after values).
+
+---
+
+### DR-05 — Low-Stock Threshold
+
+**Gap:** US-21 required a configurable threshold per product; no field or UI story existed for it.
+
+**Decision:** `low_stock_threshold` (PositiveIntegerField, default 5) is added to `Product`. The distributor configures it from the product edit form (US-25). The distributor dashboard alerts when any `VendorInventory.quantity < product.low_stock_threshold`.
+
+---
+
+### DR-06 — Product Soft-Delete
+
+**Gap:** US-06 required deactivation; `eliminar_producto` performed a hard delete that would cascade to `OrderItem`.
+
+**Decision:** `Product` gains `is_active BooleanField (default=True)`. The delete action now sets `is_active=False`; hard deletes are blocked at the application layer. Deactivated products can be reactivated (new `reactivar_producto` view). A deactivated product's `VendorInventory` rows are preserved but hidden from the order placement form. Vendors may still accept pending orders referencing a deactivated product because the stock check uses the `VendorInventory` record, not the `is_active` flag.
+
+---
+
+### DR-07 — Per-Role User Creation Pages
+
+**Gap:** US-24 originally specified a single "create user" form with a `role` dropdown (VENDOR / STORE_OWNER / DELIVERY / DISTRIBUTOR); in practice this made it easy for a distributor admin to pick the wrong role by mistake, and gave every account type an identical, unlabeled creation page.
+
+**Decision:** `role` is removed from `UserCreateForm` and is instead fixed by the URL: `accounts/users/new/<role>/` (`crear_usuario` view, `accounts/urls.py`). The `accounts` index page now links to four separate pages — "+ Admin Distribuidor", "+ Vendedor", "+ Dueño de Tienda", "+ Repartidor" — each rendering the same template with a role-specific heading and no role field to choose. An unknown `role` segment 404s. `UserEditForm` is unchanged and still exposes `role` as an editable dropdown, since reassigning an existing user's role is a distinct action from creating one.
+
+---
+
+### DR-08 — Account Provisioning: Distributor Onboarding and Store Owner Self-Registration
+
+**Gap:** FR-01.1 ("register with email, password, and a pre-assigned role") and UC-01's precondition ("user has a registered account with an assigned role") assumed every account is provisioned by an admin ahead of time — there is no self-registration user story anywhere in this document. In practice this created two problems: (1) creating a new `Distributor` tenant was a two-step, superuser-only flow — create the `Distributor` record in-app, then separately use `/admin/` to create its first `DISTRIBUTOR`-role user, since `crear_usuario` itself requires an existing `DISTRIBUTOR` user to be logged in; (2) every `STORE_OWNER` account had to be created manually by a distributor admin, which doesn't scale for a distributor with many small, non-technical retail customers and puts unnecessary friction on the least technical role in the system.
+
+**Decision:**
+- **Distributor onboarding stays superuser-gated** (this deployment serves one real client, ISBER Solutions — multi-tenancy exists for data isolation correctness, not for public multi-tenant self-signup), but is now a single combined step. `crear_distribuidor` (`accounts/views.py`) uses `DistributorOnboardingForm` to create the `Distributor` and its first `DISTRIBUTOR`-role `User` together inside one `transaction.atomic()` block — no more dropping into `/admin/` for the second half.
+- **Store owners self-register via a per-distributor invite link**, not a public signup form. `Distributor` gained an opaque `invite_token` field (`accounts/models.py`, `secrets.token_urlsafe(32)`, regenerable via `regenerate_invite_token()` if a link/QR code is compromised). The unauthenticated route `accounts/join/<token>/` (`registrar_tienda` view) resolves the token to exactly one `Distributor` and renders a minimal form (`StoreOwnerSignupForm`: email, password, store name/address/phone) — the distributor is implicit in the link, never chosen from a public list, so the existence of other distributors is never exposed and the non-technical store owner never has to correctly identify their own distributor from a menu. On submit, the `STORE_OWNER` `User` and their `Store` are created atomically and the new user is logged in immediately. The new `Store` starts with no `vendor` assigned; the existing DR-01 edge-case message ("Tu tienda no tiene un vendedor asignado...") already covers this until the distributor assigns one.
+- The distributor's own dashboard (`accounts/index.html`) displays the full invite URL (meant to be shared via WhatsApp or printed as a QR code) plus a "generar nuevo enlace" action to revoke and rotate it.
+
+**Not done in this pass:** rate-limiting or CAPTCHA on `registrar_tienda` (a guessable-enough token plus no throttling means the endpoint could be hit repeatedly to enumerate valid distributor tokens by trial, though `token_urlsafe(32)` makes brute-forcing infeasible in practice); email verification for self-registered store owners.
+
+---
+
+### DR-09 — Delivery Confirmation Without Cloudinary: Store-Owner Attestation Replaces Photo Proof
+
+**Gap:** FR-07.3/NFR-01.5 required Cloudinary-validated photos as the mechanism proving a delivery actually happened, and `DELIVERED` was a terminal status set unilaterally by the delivery person. Cloudinary was never implemented (`photo_public_id` accepted any string with no validation) — but the deeper problem, raised when descoping Cloudinary, is that photo proof was never the right source of truth for this business: it proves *a* photo was taken, not that the *right* products arrived in the *right* condition. Only the store owner receiving the order can actually verify that.
+
+**Decision:** Photo-based proof-of-delivery is dropped from scope entirely (not just the Cloudinary SDK piece) and replaced with a store-owner-attestation flow:
+- `Order.status` gains two states past `DELIVERED`: `CONFIRMED` (store owner verified the order and it's correct) and `DELIVERY_ISSUE` (store owner disputes it). `DELIVERED` becomes non-terminal — see the updated Order Status State Machine above.
+- `deliveries.crear_confirmacion` (unchanged trigger: the delivery person marking a `DISPATCHED` order as delivered) now also flips `Order.status` to `DELIVERED` and creates a `Notification` to the store owner — previously this view created a `DeliveryConfirmation` record but never actually touched `Order.status` at all, a pre-existing gap DR-09 also closes. `DeliveryConfirmationForm`'s `order` field is now scoped to `DISPATCHED` orders only (previously any order in the distributor, regardless of status, could be picked).
+- `DeliveryConfirmation.photo_public_id` becomes optional (`blank=True`) and is never validated — it's now just metadata the delivery person may optionally leave, not proof of anything. No Cloudinary dependency, no upload preset, no SDK.
+- Three new `orders/` views implement the store owner's side: `confirmar_recepcion` (`DELIVERED`→`CONFIRMED`, notifies the vendor, writes an `AuditLog` entry) and `reportar_incidencia` (`DELIVERED`→`DELIVERY_ISSUE`, captures `Order.issue_description`/`issue_reported_at`, notifies both the vendor and the delivery person). The vendor resolves a dispute via `resolver_incidencia` (`DELIVERY_ISSUE`→`CONFIRMED`, captures `Order.resolution_notes`/`resolved_at`, notifies the store owner, writes an `AuditLog` entry) — resolution is notes-only in this pass, no inventory adjustment or partial-fulfillment tooling (see "Not done in this pass" below).
+- `AuditLog` writes are scoped to just these two new transitions (`order_confirmed`, `delivery_issue_resolved`) — writing entries for the older `aceptar_pedido`/`rechazar_pedido`/`despachar_pedido` transitions remains the separate, already-tracked Tier 3 gap (see Implementation Status above).
+
+**Explicitly out of scope (see "Out of Scope (MVP)" below):** Cloudinary SDK integration, unsigned upload presets, and server-side `public_id` validation are dropped from the MVP, not deferred to a later sprint — FR-07.3/NFR-01.5 as originally written are superseded by this DR, not merely unimplemented. Structured remediation on a resolved issue (inventory adjustment, partial fulfillment, redelivery tracking) is deferred, not built — `resolver_incidencia` only records notes and flips status.
 
 ---
 
@@ -575,6 +756,17 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 ### Epic 2 — Distributor: Product Catalog
 
+**US-24** — Gestionar usuarios de la plataforma  
+*As a DISTRIBUTOR, I want to create users and assign them roles so that vendors, store owners, and delivery personnel can access the system.*  
+**Priority:** M | **Related:** UC-08, FR-02.1, DR-07  
+**Acceptance Criteria:**
+- [x] Distributor creates a user via a role-specific page (Admin Distribuidor / Vendedor / Dueño de Tienda / Repartidor) rather than picking a role from a dropdown — see DR-07.
+- [ ] Distributor can edit a user's role and active status.
+- [ ] A user created by Distributor A is invisible to Distributor B.
+- [ ] The distributor cannot create another DISTRIBUTOR-role user.
+
+---
+
 **US-04** — Crear producto  
 *As a DISTRIBUTOR, I want to add a new product to the catalog so that vendors can sell it to stores.*  
 **Priority:** M | **Related:** UC-04, FR-03.1  
@@ -594,12 +786,14 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 ---
 
-**US-06** — Desactivar producto  
-*As a DISTRIBUTOR, I want to deactivate a product so that vendors can no longer place new orders for it without affecting orders already in progress.*  
-**Priority:** S | **Related:** UC-04, FR-03.3  
+**US-06** — Desactivar / reactivar producto  
+*As a DISTRIBUTOR, I want to deactivate a product so that vendors can no longer place new orders for it, and reactivate it when it becomes available again.*  
+**Priority:** S | **Related:** UC-04, FR-03.3, DR-06  
 **Acceptance Criteria:**
-- [ ] Deactivated product no longer appears in the vendor's available inventory.
-- [ ] Orders that already contain the product are unaffected.
+- [ ] Deactivated product (`is_active=False`) no longer appears in the vendor's available inventory or the order placement form.
+- [ ] Orders that already contain the product are unaffected; vendors may still accept pending orders for it.
+- [ ] A reactivate action restores `is_active=True`; the product reappears in the vendor inventory view.
+- [ ] No product is ever hard-deleted from the database through the UI.
 
 ---
 
@@ -663,8 +857,10 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 **Priority:** M | **Related:** UC-12, FR-06.2, FR-06.4  
 **Acceptance Criteria:**
 - [ ] A confirmation dialog appears before the rejection is committed.
+- [ ] Vendor may optionally enter a `rejection_reason` (max 500 chars) before confirming.
 - [ ] Order transitions to REJECTED; inventory is not affected.
-- [ ] Store owner receives an in-app notification of the rejection.
+- [ ] A `Notification` is created for the store owner including the rejection reason if provided.
+- [ ] An `AuditLog` entry records `previous_status=PENDING`, `new_status=REJECTED`.
 
 ---
 
@@ -682,9 +878,11 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 **US-14** — Realizar un pedido  
 *As a STORE_OWNER, I want to place an order by selecting products and quantities so that I can restock my store without calling or visiting the distributor.*  
-**Priority:** M | **Related:** UC-14, FR-05.1, FR-05.3, FR-05.4  
+**Priority:** M | **Related:** UC-14, FR-05.1, FR-05.3, FR-05.4, DR-01  
 **Acceptance Criteria:**
-- [ ] Order flow completes in 3 steps or fewer from the main screen.
+- [ ] Order flow completes in 3 steps or fewer: ① Select products + quantities → ② Review → ③ Confirm.
+- [ ] If the store owner belongs to multiple stores, step 0 asks them to select which store they are ordering for.
+- [ ] If the store has no vendor assigned, the "Nuevo Pedido" button is disabled with a message: *"Tu tienda no tiene un vendedor asignado."*
 - [ ] If a product is unavailable, a clear per-item error is shown and no order is created.
 - [ ] The price recorded on each item matches the catalog price at the time of submission.
 - [ ] All interactive elements meet 48 × 48 px minimum tap target size.
@@ -702,10 +900,35 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 **US-16** — Recibir notificaciones de cambio de estado  
 *As a STORE_OWNER, I want to see in-app notifications when my order status changes so that I'm informed without having to check manually.*  
-**Priority:** S | **Related:** FR-10.2–FR-10.4  
+**Priority:** S | **Related:** FR-10.2–FR-10.4, DR-03  
 **Acceptance Criteria:**
 - [ ] Notification appears when order transitions to ACCEPTED, REJECTED, DISPATCHED, or DELIVERED.
 - [ ] Notification identifies the order by a readable reference (e.g., order number + store name).
+- [ ] Unread notification count is visible on the store owner's dashboard on every page load.
+- [ ] Store owner can mark notifications as read.
+
+---
+
+**US-22** — Reenviar pedido rechazado  
+*As a STORE_OWNER, I want to resubmit a rejected order so that the vendor gets a second attempt to fulfil it.*  
+**Priority:** S | **Related:** UC-12, Order state machine (`previousOrderId`)  
+**Acceptance Criteria:**
+- [ ] From a REJECTED order's detail view, a "Reenviar pedido" button creates a new Order with `previous_order` pointing to the rejected one.
+- [ ] The new order starts in PENDING status with the same items and current catalog prices.
+- [ ] The original rejected order is unchanged and remains visible in the order history.
+- [ ] If the vendor has since been reassigned on the store, the new order goes to the current vendor.
+
+---
+
+**US-23** — Cancelar pedido pendiente  
+*As a STORE_OWNER, I want to cancel an order before the vendor acts on it so that I can correct mistakes.*  
+**Priority:** S | **Related:** FR-05  
+**Acceptance Criteria:**
+- [ ] A "Cancelar pedido" action is available only while the order is in PENDING status.
+- [ ] A confirmation dialog appears before cancellation is committed.
+- [ ] The order transitions to REJECTED with `rejection_reason = "Cancelado por el propietario de la tienda"`.
+- [ ] Inventory is not affected (no deduction had occurred).
+- [ ] An AuditLog entry records the cancellation with `previous_status=PENDING`, `new_status=REJECTED`.
 
 ---
 
@@ -752,6 +975,16 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 ---
 
+**US-25** — Configurar umbral de stock bajo  
+*As a DISTRIBUTOR, I want to set a minimum stock threshold per product so that the dashboard alerts me before orders fail.*  
+**Priority:** S | **Related:** US-21, FR-04.5, DR-05  
+**Acceptance Criteria:**
+- [ ] Distributor can set `low_stock_threshold` (integer ≥ 0) on the product create/edit form.
+- [ ] Default value is 5 units.
+- [ ] Threshold change takes effect on the next dashboard page load.
+
+---
+
 **US-21** — Alerta de stock bajo  
 *As a DISTRIBUTOR, I want a visual alert when a vendor's product stock drops below a threshold so that I can restock before an order is rejected due to lack of inventory.*  
 **Priority:** S | **Related:** FR-04.5  
@@ -794,7 +1027,7 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 |----|----------|-------------|
 | FR-03.1 | **M** | The distributor must be able to create a product with: name, description, unit price, and an initial stock quantity. |
 | FR-03.2 | **M** | The distributor must be able to update a product's name, description, and unit price. |
-| FR-03.3 | **S** | The distributor must be able to deactivate (soft-delete) a product; active orders referencing it must not be affected. |
+| FR-03.3 | **S** | The distributor must be able to deactivate (soft-delete) a product and subsequently reactivate it; active orders referencing it must not be affected. No product may be hard-deleted through the UI. |
 | FR-03.4 | **M** | The distributor must be able to view the full product catalog with current prices. |
 | FR-03.5 | **M** | The distributor must be able to assign stock quantities to a specific vendor, creating or updating the corresponding `VendorInventory` record. |
 
@@ -946,7 +1179,7 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 | ID | Priority | Requirement |
 |----|----------|-------------|
-| NFR-05.1 | **M** | The application must deploy on the Vercel free tier without requiring paid add-ons. |
+| NFR-05.1 | **M** | The application must deploy on the Railway free tier without requiring paid add-ons. |
 | NFR-05.2 | **M** | The database must run on a managed PostgreSQL free tier. |
 | NFR-05.3 | **M** | Photo storage must remain within the free-tier limits of the chosen cloud storage provider during MVP usage. |
 | NFR-05.4 | **M** | All secrets (database URL, auth secrets, storage keys, email API key) must be injected via environment variables and must never appear in source code or version control. |
@@ -1001,7 +1234,7 @@ Stories are grouped by Epic. Each story maps to one or more use cases and functi
 
 > These decisions are fixed for this project due to team constraints, academic requirements, or client agreements. They are not requirements, but they affect implementation choices.
 
-- **Framework:** Django 4.2 MVT (server-rendered templates)
+- **Framework:** Django 6.0+ MVT (server-rendered templates) — hard constraint, not a preference: the team's dev machine runs Python 3.14.6, and Python 3.14 support was only added in Django 6.0; earlier lines (including the originally-planned 4.2 and the 5.2.2 currently pinned in `requirements.txt`) do not support this Python version
 - **ORM:** Django ORM against a PostgreSQL database (Railway)
 - **Authentication:** `django.contrib.auth` + custom `AbstractUser` with `role` CharField
 - **Password hashing:** Django's default PBKDF2 (built-in, no extra dependency)
@@ -1065,28 +1298,33 @@ The backlog is ordered by sprint target. Items are identified by requirement ID 
 | Login / Logout views | FR-01.1, FR-01.2, FR-01.5 | **M** | A | 1 |
 | `@role_required` decorator + route protection | FR-02.3, FR-02.4, FR-02.5 | **M** | A | 1 |
 | Password reset flow (Django SMTP + Resend) | FR-01.3, FR-01.4, FR-01.6 | **M** | B | 1 |
-| Distributor + Store models with `distributor` FK | FR-02.5 | **M** | A | 2 |
-| Product CRUD (distributor only) | FR-03.1–FR-03.4 | **M** | A | 2 |
+| User management CRUD for DISTRIBUTOR (US-24) | FR-02.1, US-24 | **M** | B | 1 |
+| Distributor + Store models with `distributor` FK + `vendor` FK (DR-01) | FR-02.5, DR-01 | **M** | A | 2 |
+| Product CRUD with `is_active` + `low_stock_threshold` (DR-05, DR-06) | FR-03.1–FR-03.4, DR-05, DR-06 | **M** | A | 2 |
+| Product soft-delete + reactivate actions | FR-03.3, US-06 | **S** | A | 2 |
 | VendorInventory assignment | FR-03.5, FR-04.1, FR-04.2 | **M** | A | 2 |
 | Cloudinary upload preset + `public_id` validation | FR-07.3, FR-07.5 | **M** | B | 2 |
-| Order creation with price snapshot (`unit_price_at_time`) | FR-05.1, FR-05.4 | **M** | A | 3 |
+| Order creation with price snapshot + vendor auto-assign from store (DR-01) | FR-05.1, FR-05.4, DR-01 | **M** | A | 3 |
+| Store-selection step when store owner has multiple stores (US-14) | US-14 | **M** | A | 3 |
 | Product availability validation at submit time | FR-05.3 | **M** | A | 3 |
 | Vendor order queue view (pending orders) | FR-06.1 | **M** | A | 3 |
 | Order accept with `transaction.atomic()` + `select_for_update()` | FR-04.3, FR-04.4, FR-06.2–FR-06.4 | **M** | A | 3 |
-| Order reject + dispatch transitions | FR-06.4, FR-06.5 | **M** | A | 3 |
+| Order reject (with optional `rejection_reason`) + dispatch transitions | FR-06.4, FR-06.5, US-12 | **M** | A | 3 |
 | JS polling module (30 s, vendor dashboard) | FR-06.6, FR-10.1 | **M** | B | 3 |
 | Store owner order status view | FR-05.5 | **M** | B | 3 |
 | Delivery confirmation view + photo upload | FR-07.1, FR-07.2, FR-07.4 | **M** | A | 4 |
-| Audit log on every order status transition | FR-09.1, FR-09.2, FR-09.5 | **M** | B | 4 |
+| Audit log on every order status transition (`previous_status`, `new_status`) | FR-09.1, FR-09.2, FR-09.5, DR-04 | **M** | B | 4 |
 | Distributor operations dashboard (orders + inventory) | FR-08.1, FR-08.3 | **M** | B | 4 |
 | DB indexes on `Order(vendor, status)` and `Order(store)` | NFR-02.6 | **M** | B | 4 |
 | N+1 prevention with `select_related` on all list views | NFR-02.5 | **M** | A | 4 |
-| In-app status notifications for store owner | FR-10.2–FR-10.4 | **S** | B | 5 |
+| `Notification` model + page-load unread count for store owner (DR-03) | FR-10.2–FR-10.4, DR-03 | **S** | B | 5 |
+| Store owner: mark notification as read | US-16 | **S** | B | 5 |
+| Store owner: cancel pending order (US-23) | US-23 | **S** | A | 5 |
+| Store owner: resubmit rejected order (US-22) | US-22 | **S** | A | 5 |
 | Dashboard filters (date, vendor, store, status) | FR-08.2 | **S** | A | 5 |
 | Summary metrics (total orders, fulfilled, rejected) | FR-08.4 | **S** | A | 5 |
 | Audit log for catalog changes and failed accepts | FR-09.3, FR-09.4 | **S** | B | 5 |
-| Low-stock alert for distributor | FR-04.5 | **S** | B | 5 |
-| Product soft-delete | FR-03.3 | **S** | A | 5 |
+| Low-stock alert on distributor dashboard (`low_stock_threshold`) | FR-04.5, US-21, US-25 | **S** | B | 5 |
 | Unit tests: order state transitions, price snapshot, reset token | TR-01.1–TR-01.3 | **S** | Both | 6 |
 | Integration tests: atomic accept, rollback, tenant isolation | TR-02.1–TR-02.3 | **M** | Both | 6 |
 | E2E tests: 4 critical paths + error + security paths | TR-03.1–TR-03.6 | **M** | Both | 6 |
@@ -1165,6 +1403,8 @@ Explicitly deferred to a post-graduation roadmap:
 
 | Feature | Reason deferred |
 |---------|-----------------|
+| Cloudinary photo-proof validation for deliveries | DR-09: superseded, not deferred — store-owner confirmation replaces photo proof as the source of truth |
+| Structured issue remediation (inventory adjustment, partial fulfillment) on a resolved delivery dispute | DR-09: `resolver_incidencia` is notes-only for now |
 | SRI electronic invoicing | Regulatory complexity exceeds academic timeline |
 | Commission calculation | Requires payroll integration out of scope |
 | Vendor training module | Nice-to-have, no client urgency |

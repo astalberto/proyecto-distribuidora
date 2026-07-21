@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<h2>Usuarios — {{ distribuidor.name }}</h2>
+<p>
+  <a href="{% url 'crear_usuario' role='DISTRIBUTOR' %}">+ Admin Distribuidor</a> |
+  <a href="{% url 'crear_usuario' role='VENDOR' %}">+ Vendedor</a> |
+  <a href="{% url 'crear_usuario' role='STORE_OWNER' %}">+ Dueño de Tienda</a> |
+  <a href="{% url 'crear_usuario' role='DELIVERY' %}">+ Repartidor</a>
+</p>
+
+<div class="invite-box">
+  <h3>Enlace de registro para dueños de tienda</h3>
+  <p>Comparte este enlace (por WhatsApp o como código QR impreso) para que un dueño de tienda cree su propia cuenta, sin que tengas que registrarlo tú manualmente:</p>
+  <p><code>{{ request.scheme }}://{{ request.get_host }}{% url 'registrar_tienda' distribuidor.invite_token %}</code></p>
+  <form method="post" action="{% url 'regenerar_invite_token' %}" onsubmit="return confirm('El enlace anterior dejará de funcionar. ¿Continuar?')">
+    {% csrf_token %}
+    <button type="submit">Generar nuevo enlace</button>
+  </form>
+</div>
+
+<table border="1">
+  <thead>
+    <tr>
+      <th>Email</th>
+      <th>Rol</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in usuarios %}
+    <tr>
+      <td>{{ u.email }}</td>
+      <td>{{ u.get_role_display }}</td>
+      <td>
+        <a href="{% url 'editar_usuario' u.id %}">Editar</a> |
+        <a href="{% url 'eliminar_usuario' u.id %}" onclick="return confirm('¿Eliminar usuario {{ u.email }}?')">Eliminar</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="3">Sin usuarios.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

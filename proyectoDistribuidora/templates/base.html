@@ -1,0 +1,57 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>{% block title %}ISBER Solutions{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+  </head>
+  <body>
+    <header>
+      <h1>ISBER Solutions — Distribuidora</h1>
+      <nav>
+        <ul>
+          <li><a href="{% url 'home' %}">Inicio</a></li>
+          {% if user.is_authenticated %}
+          {% if user.role == 'DISTRIBUTOR' %}
+          <li><a href="{% url 'distributor_dashboard' %}">Dashboard</a></li>
+          {% endif %}
+          <li><a href="{% url 'index_accounts' %}">Usuarios</a></li>
+          <li><a href="{% url 'index_catalog' %}">Catálogo</a></li>
+          <li><a href="{% url 'index_orders' %}">Pedidos</a></li>
+          <li><a href="{% url 'index_deliveries' %}">Entregas</a></li>
+          <li><a href="{% url 'index_audit' %}">Auditoría</a></li>
+          <li><a href="{% url 'notificaciones' %}">Notificaciones{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+      <div class="session-bar">
+        {% if user.is_authenticated %}
+          <span>Conectado como {{ user.email }}{% if user.role %} ({{ user.get_role_display }}){% endif %}</span>
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="linklike">Cerrar sesión</button>
+          </form>
+        {% else %}
+          <span></span>
+          <a href="{% url 'login' %}">Iniciar sesión</a>
+        {% endif %}
+      </div>
+    </header>
+
+    <section>
+      {% if messages %}
+        {% for message in messages %}
+          <p class="{{ message.tags }}">{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+      {% block content %}{% endblock %}
+    </section>
+
+    <footer>
+      <p>Loja — Ecuador</p>
+      <p>{% now "j F Y H:i" %}</p>
+    </footer>
+  </body>
+</html>

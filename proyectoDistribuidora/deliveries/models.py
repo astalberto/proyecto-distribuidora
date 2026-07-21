@@ -18,9 +18,12 @@ class DeliveryConfirmation(models.Model):
         related_name="deliveries"
     )
 
-    photo_public_id = models.CharField(max_length=255)
+    # DR-09: photo proof is no longer the source of truth for delivery —
+    # the store owner's confirmation is (see Order.status). This is now just
+    # optional metadata the delivery person may leave; never validated.
+    photo_public_id = models.CharField(max_length=255, blank=True)
 
     confirmed_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.timestamp} - {self.action} - {self.entity_type}"
+        return f"Delivery {self.order} by {self.delivery_user} at {self.confirmed_at}"
