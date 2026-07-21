@@ -75,12 +75,16 @@ DISTRIBUTOR (dueño de la distribuidora)
     Crea usuarios de las otras 3 categorías (páginas separadas por rol: Vendedor / Dueño de Tienda / Repartidor)
     Ve el dashboard de operaciones (pedidos por estado, niveles de stock)
     Consulta el AuditLog (historial de cambios)
+
+    
 VENDOR (vendedor)
     ⚠ Ver su propio inventario (UC-09) — todavía NO hay una pantalla para esto; el stock del vendedor solo se ve indirectamente en el mensaje de error si falla un "aceptar" por falta de stock
     Ve pedidos pendientes de las tiendas que le fueron asignadas (dashboard con polling cada 30s a /api/orders/pending/)
     Acepta un pedido → debe descontar inventario de forma atómica (transaction.atomic() + select_for_update())
     Rechaza un pedido → con motivo opcional
     Despacha un pedido aceptado → pasa a DISPATCHED y queda visible para repartidores
+
+    
 STORE_OWNER (dueño de tienda)
     Hace pedidos (Place Order) al vendedor asignado a su tienda (Store.vendor)
     Rastrea el estado de sus pedidos
@@ -88,6 +92,8 @@ STORE_OWNER (dueño de tienda)
     ⚠ Reenviar un pedido rechazado (US-22) — el campo previous_order existe en el modelo pero todavía NO está implementado el botón/flujo
     Puede cancelar un pedido mientras esté PENDING
     Confirma la recepción de un pedido DELIVERED, o reporta un problema (DR-09)
+
+    
 DELIVERY (repartidor)
     Ve todos los pedidos DISPATCHED de su distribuidora (no hay asignación por ruta en el MVP — es "quien llega primero")
     Confirma la entrega —  → pasa el pedido a DELIVERED
