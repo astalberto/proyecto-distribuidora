@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block title %}Productos{% endblock %}
+{% block content %}
+<p><a href="{% url 'index_catalog' %}">← Catálogo</a></p>
+<h2>Productos</h2>
+<p>
+  <a href="{% url 'crear_producto' %}">+ Nuevo Producto</a>
+  &nbsp;·&nbsp;
+  <a href="{% url 'importar_productos' %}">+ Importar CSV</a>
+</p>
+
+<form method="get">
+  <input type="text" name="q" value="{{ filtros.q }}" placeholder="Nombre, SKU o código de barras">
+  <select name="category">
+    <option value="">Categoría (todas)</option>
+    {% for c in categorias %}
+    <option value="{{ c.id }}" {% if filtros.category == c.id|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="brand">
+    <option value="">Marca (todas)</option>
+    {% for m in marcas %}
+    <option value="{{ m.id }}" {% if filtros.brand == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="stock_status">
+    <option value="">Estado de stock (todos)</option>
+    <option value="in_stock" {% if filtros.stock_status == "in_stock" %}selected{% endif %}>En stock</option>
+    <option value="low" {% if filtros.stock_status == "low" %}selected{% endif %}>Stock bajo</option>
+    <option value="out" {% if filtros.stock_status == "out" %}selected{% endif %}>Agotado</option>
+  </select>
+  <label>
+    <input type="checkbox" name="only_on_sale" value="1" {% if filtros.only_on_sale %}checked{% endif %}>
+    Solo en promoción
+  </label>
+  <input type="submit" value="Buscar">
+  <a href="{% url 'index_productos' %}">Limpiar</a>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>SKU</th>
+      <th>Nombre</th>
+      <th>Categoría</th>
+      <th>Marca</th>
+      <th>Precio</th>
+      <th>Precio con descuento</th>
+      <th>Estado</th>
+      <th>Stock</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in productos %}
+    <tr>
+      <td>{{ p.sku }}</td>
+      <td>{{ p.name }}</td>
+      <td>{{ p.category }}</td>
+      <td>{{ p.brand }}</td>
+      <td>${{ p.unit_price }}</td>
+      <td>
+        {% with descuento=p.active_discount %}
+          {% if descuento %}${{ p.current_price }}{% else %}—{% endif %}
+        {% endwith %}
+      </td>
+      <td>
+        {{ p.get_status_display }}
+        {% if p.is_out_of_stock %} — ⚠ Agotado{% elif p.total_stock < p.low_stock_threshold %} — ⚠ Stock bajo{% endif %}
+      </td>
+      <td>{{ p.total_stock }}</td>
+      <td>
+        <a href="{% url 'editar_producto' p.id %}">Editar</a> |
+        {% if p.status == 'ACTIVE' %}
+          <a href="{% url 'eliminar_producto' p.id %}" onclick="return confirm('¿Desactivar producto {{ p.name }}?')">Desactivar</a>
+        {% else %}
+          <a href="{% url 'reactivar_producto' p.id %}">Reactivar</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="9">
+      {% if filtros.q or filtros.category or filtros.brand or filtros.stock_status or filtros.only_on_sale %}
+        No se encontraron productos con estos filtros. <a href="{% url 'index_productos' %}">Limpiar filtros</a>
+      {% else %}
+        No hay productos.
+      {% endif %}
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

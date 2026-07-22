@@ -1,7 +1,7 @@
-# Requirements — ISBER Solutions Distribution Platform
+# Requirements — ISBEN Solutions Distribution Platform
 
 **Project:** proyecto-distribuidora  
-**Client:** ISBER Solutions, Loja, Ecuador  
+**Client:** ISBEN Solutions, Loja, Ecuador  
 **Team:** 2 students, 1 semester (~3 months build time)  
 **Status:** In progress — generic CRUD scaffolding built for all 5 apps; auth/RBAC/tenant isolation/order-lifecycle business logic not yet implemented (see Implementation Status below)  
 **Last updated:** 2026-07-15
@@ -297,7 +297,7 @@ Resolved before prototype design. Each decision closes a gap identified in the B
 **Gap:** FR-01.1 ("register with email, password, and a pre-assigned role") and UC-01's precondition ("user has a registered account with an assigned role") assumed every account is provisioned by an admin ahead of time — there is no self-registration user story anywhere in this document. In practice this created two problems: (1) creating a new `Distributor` tenant was a two-step, superuser-only flow — create the `Distributor` record in-app, then separately use `/admin/` to create its first `DISTRIBUTOR`-role user, since `crear_usuario` itself requires an existing `DISTRIBUTOR` user to be logged in; (2) every `STORE_OWNER` account had to be created manually by a distributor admin, which doesn't scale for a distributor with many small, non-technical retail customers and puts unnecessary friction on the least technical role in the system.
 
 **Decision:**
-- **Distributor onboarding stays superuser-gated** (this deployment serves one real client, ISBER Solutions — multi-tenancy exists for data isolation correctness, not for public multi-tenant self-signup), but is now a single combined step. `crear_distribuidor` (`accounts/views.py`) uses `DistributorOnboardingForm` to create the `Distributor` and its first `DISTRIBUTOR`-role `User` together inside one `transaction.atomic()` block — no more dropping into `/admin/` for the second half.
+- **Distributor onboarding stays superuser-gated** (this deployment serves one real client, ISBEN Solutions — multi-tenancy exists for data isolation correctness, not for public multi-tenant self-signup), but is now a single combined step. `crear_distribuidor` (`accounts/views.py`) uses `DistributorOnboardingForm` to create the `Distributor` and its first `DISTRIBUTOR`-role `User` together inside one `transaction.atomic()` block — no more dropping into `/admin/` for the second half.
 - **Store owners self-register via a per-distributor invite link**, not a public signup form. `Distributor` gained an opaque `invite_token` field (`accounts/models.py`, `secrets.token_urlsafe(32)`, regenerable via `regenerate_invite_token()` if a link/QR code is compromised). The unauthenticated route `accounts/join/<token>/` (`registrar_tienda` view) resolves the token to exactly one `Distributor` and renders a minimal form (`StoreOwnerSignupForm`: email, password, store name/address/phone) — the distributor is implicit in the link, never chosen from a public list, so the existence of other distributors is never exposed and the non-technical store owner never has to correctly identify their own distributor from a menu. On submit, the `STORE_OWNER` `User` and their `Store` are created atomically and the new user is logged in immediately. The new `Store` starts with no `vendor` assigned; the existing DR-01 edge-case message ("Tu tienda no tiene un vendedor asignado...") already covers this until the distributor assigns one.
 - The distributor's own dashboard (`accounts/index.html`) displays the full invite URL (meant to be shared via WhatsApp or printed as a QR code) plus a "generar nuevo enlace" action to revoke and rotate it.
 
@@ -569,7 +569,7 @@ graph LR
     STORE["👤 STORE_OWNER"]
     DELIV["👤 DELIVERY"]
 
-    subgraph SYS["ISBER Solutions Platform"]
+    subgraph SYS["ISBEN Solutions Platform"]
         UC01(["UC-01 · Login"])
         UC02(["UC-02 · Logout"])
         UC03(["UC-03 · Reset Password"])
@@ -1274,7 +1274,7 @@ The team adopts **Scrum** with 2-week sprints over a 13-week semester. With a 2-
 | Product Owner | Rotates each sprint (accountable for backlog prioritization) |
 | Scrum Master | Rotates each sprint (accountable for ceremonies and impediments) |
 | Development Team | Both students |
-| Stakeholder | ISBER Solutions (attends Sprint Review) |
+| Stakeholder | ISBEN Solutions (attends Sprint Review) |
 
 ---
 
@@ -1284,7 +1284,7 @@ The team adopts **Scrum** with 2-week sprints over a 13-week semester. With a 2-
 |----------|------|----------|---------|
 | Sprint Planning | Day 1 of each sprint | 1 h | Select backlog items, break into tasks, assign to Lane A / Lane B |
 | Daily Standup | Every weekday | 15 min | What did I do? What will I do? Any blockers? |
-| Sprint Review | Last day of each sprint | 30 min | Live demo to ISBER; collect feedback; update backlog |
+| Sprint Review | Last day of each sprint | 30 min | Live demo to ISBEN; collect feedback; update backlog |
 | Sprint Retrospective | After Sprint Review | 30 min | What went well / what to improve for next sprint |
 
 ---
@@ -1388,7 +1388,7 @@ Sprint 4 — Delivery, Audit & Dashboard (weeks 8–9)
   Demo  : Delivery uploads photo → order DELIVERED → distributor sees audit trail.
 
 Sprint 5 — Secondary Features (weeks 10–11)
-  Goal : Should-have items that complete the product for ISBER.
+  Goal : Should-have items that complete the product for ISBEN.
   Lane A: Dashboard filters + summary metrics → product soft-delete
   Lane B: In-app notifications → catalog/failure audit logs → low-stock alert
   Demo  : Distributor filters orders by vendor; store owner sees ACCEPTED notification.
@@ -1396,8 +1396,8 @@ Sprint 5 — Secondary Features (weeks 10–11)
 Sprint 6 — Testing & Ship (weeks 12–13)
   Goal : All M-priority tests passing; app live on Railway production.
   Both  : Unit tests → integration tests (race condition) → Playwright e2e →
-          production deploy → ISBER final demo
-  Done  : 4 critical Playwright paths green; Railway production URL delivered to ISBER.
+          production deploy → ISBEN final demo
+  Done  : 4 critical Playwright paths green; Railway production URL delivered to ISBEN.
 ```
 
 ---

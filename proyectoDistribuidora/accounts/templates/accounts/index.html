@@ -42,4 +42,40 @@
     {% endfor %}
   </tbody>
 </table>
+
+<hr>
+<h3>Tiendas</h3>
+<p>
+  <a href="{% url 'crear_tienda' %}">+ Nueva Tienda</a>
+  &nbsp;·&nbsp;
+  <a href="{% url 'mapa_tiendas' %}">Ver mapa</a>
+</p>
+
+<table border="1">
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Dirección</th>
+      <th>Dueño</th>
+      <th>Vendedor</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tiendas %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td>{{ t.address }}</td>
+      <td>{{ t.owner.email|default:"—" }}</td>
+      <td>{{ t.vendor.email|default:"Sin asignar" }}</td>
+      <td>
+        <a href="{% url 'editar_tienda' t.id %}">Editar</a> |
+        <a href="{% url 'eliminar_tienda' t.id %}" onclick="return confirm('¿Eliminar tienda {{ t.name }}?')">Eliminar</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">Sin tiendas registradas.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

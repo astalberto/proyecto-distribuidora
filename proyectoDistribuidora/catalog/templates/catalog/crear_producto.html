@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Nuevo Producto{% endblock %}
 {% block content %}
-<p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
+<p><a href="{% url 'index_productos' %}">← Volver a Productos</a></p>
 <h2>Nuevo Producto</h2>
 <form method="post" enctype="multipart/form-data">
   {% csrf_token %}
@@ -16,8 +16,14 @@
 
   <fieldset>
     <legend>Clasificación</legend>
-    <p>{{ formulario.category.label_tag }} {{ formulario.category }} {{ formulario.category.errors }}</p>
-    <p>{{ formulario.brand.label_tag }} {{ formulario.brand }} {{ formulario.brand.errors }}</p>
+    <p>
+      {{ formulario.category.label_tag }} {{ formulario.category }} {{ formulario.category.errors }}
+      <button type="button" onclick="abrirPopup('{% url 'crear_categoria' %}?popup=1', 'refreshCategorySelect')">+</button>
+    </p>
+    <p>
+      {{ formulario.brand.label_tag }} {{ formulario.brand }} {{ formulario.brand.errors }}
+      <button type="button" onclick="abrirPopup('{% url 'crear_marca' %}?popup=1', 'refreshBrandSelect')">+</button>
+    </p>
     <p>{{ formulario.unit_of_measure.label_tag }} {{ formulario.unit_of_measure }} {{ formulario.unit_of_measure.errors }}</p>
   </fieldset>
 
@@ -37,7 +43,21 @@
 
   <p>
     <input type="submit" value="Guardar producto">
-    <a href="{% url 'index_catalog' %}">Cancelar</a>
+    <a href="{% url 'index_productos' %}">Cancelar</a>
   </p>
 </form>
+
+<script>
+function abrirPopup(url, callback) {
+  window.open(url, callback, 'width=420,height=240,resizable=yes');
+}
+function refreshCategorySelect(id, name) {
+  var sel = document.getElementById('id_category');
+  sel.add(new Option(name, id, true, true));
+}
+function refreshBrandSelect(id, name) {
+  var sel = document.getElementById('id_brand');
+  sel.add(new Option(name, id, true, true));
+}
+</script>
 {% endblock %}

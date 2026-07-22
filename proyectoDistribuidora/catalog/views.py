@@ -51,6 +51,11 @@ def check_low_stock_digest(distributor, actor):
 
 @role_required('DISTRIBUTOR')
 def index(request):
+    return render(request, 'catalog/index.html')
+
+
+@role_required('DISTRIBUTOR')
+def index_productos(request):
     distribuidor = request.user.distributor
 
     productos = (
@@ -59,7 +64,6 @@ def index(request):
         .prefetch_related('stock_levels', 'discounts')
     )
 
-    # Search & filter (GET params, same pattern as the dashboard filters)
     q = request.GET.get('q', '').strip()
     category_id = request.GET.get('category', '')
     brand_id = request.GET.get('brand', '')
@@ -86,13 +90,8 @@ def index(request):
     if only_on_sale:
         productos = [p for p in productos if p.active_discount() is not None]
 
-    return render(request, 'catalog/index.html', {
-        # NFR-02.5: catalog/index.html displays distributor/owner/vendor
-        # (Store), distributor (Product), and vendor/product (VendorInventory)
-        # per row — eager-load to avoid an N+1 per row.
-        'tiendas': Store.objects.filter(distributor=distribuidor)
-            .select_related('distributor', 'owner', 'vendor'),
-        'productos': productos,  # active + inactive, filtered above
+    return render(request, 'catalog/index_productos.html', {
+        'productos': productos,
         'categorias': Category.objects.filter(distributor=distribuidor),
         'marcas': Brand.objects.filter(distributor=distribuidor),
         'filtros': {
@@ -100,6 +99,18 @@ def index(request):
             'stock_status': stock_status, 'only_on_sale': only_on_sale,
         },
     })
+
+
+@role_required('DISTRIBUTOR')
+def index_categorias(request):
+    categorias = Category.objects.filter(distributor=request.user.distributor)
+    return render(request, 'catalog/index_categorias.html', {'categorias': categorias})
+
+
+@role_required('DISTRIBUTOR')
+def index_marcas(request):
+    marcas = Brand.objects.filter(distributor=request.user.distributor)
+    return render(request, 'catalog/index_marcas.html', {'marcas': marcas})
 
 
 # --- Store ---
@@ -112,7 +123,7 @@ def crear_tienda(request):
             tienda = formulario.save(commit=False)
             tienda.distributor = request.user.distributor
             tienda.save()
-            return redirect(index)
+            return redirect('index_accounts')
     else:
         formulario = StoreForm(distributor=request.user.distributor)
     return render(request, 'catalog/crear_tienda.html', {'formulario': formulario})
@@ -125,7 +136,7 @@ def editar_tienda(request, id):
         formulario = StoreForm(request.POST, instance=tienda, distributor=request.user.distributor)
         if formulario.is_valid():
             formulario.save()
-            return redirect(index)
+            return redirect('index_accounts')
     else:
         formulario = StoreForm(instance=tienda, distributor=request.user.distributor)
     return render(request, 'catalog/editar_tienda.html', {
@@ -137,23 +148,31 @@ def editar_tienda(request, id):
 @role_required('DISTRIBUTOR')
 def eliminar_tienda(request, id):
     get_object_or_404(Store, id=id, distributor=request.user.distributor).delete()
-    return redirect(index)
+    return redirect('index_accounts')
 
 
 # --- Category ---
 
 @role_required('DISTRIBUTOR')
 def crear_categoria(request):
+    is_popup = 'popup' in request.GET or 'popup' in request.POST
     if request.method == 'POST':
         formulario = CategoryForm(request.POST)
         if formulario.is_valid():
             categoria = formulario.save(commit=False)
             categoria.distributor = request.user.distributor
             categoria.save()
-            return redirect(index)
+            if is_popup:
+                return render(request, 'catalog/popup_creado.html', {
+                    'obj_id': categoria.id,
+                    'obj_name': categoria.name,
+                    'callback': 'refreshCategorySelect',
+                })
+            return redirect('index_categorias')
     else:
         formulario = CategoryForm()
-    return render(request, 'catalog/crear_categoria.html', {'formulario': formulario})
+    template = 'catalog/crear_categoria_popup.html' if is_popup else 'catalog/crear_categoria.html'
+    return render(request, template, {'formulario': formulario})
 
 
 @role_required('DISTRIBUTOR')
@@ -163,7 +182,7 @@ def editar_categoria(request, id):
         formulario = CategoryForm(request.POST, instance=categoria)
         if formulario.is_valid():
             formulario.save()
-            return redirect(index)
+            return redirect('index_categorias')
     else:
         formulario = CategoryForm(instance=categoria)
     return render(request, 'catalog/editar_categoria.html', {
@@ -175,16 +194,24 @@ def editar_categoria(request, id):
 
 @role_required('DISTRIBUTOR')
 def crear_marca(request):
+    is_popup = 'popup' in request.GET or 'popup' in request.POST
     if request.method == 'POST':
         formulario = BrandForm(request.POST)
         if formulario.is_valid():
             marca = formulario.save(commit=False)
             marca.distributor = request.user.distributor
             marca.save()
-            return redirect(index)
+            if is_popup:
+                return render(request, 'catalog/popup_creado.html', {
+                    'obj_id': marca.id,
+                    'obj_name': marca.name,
+                    'callback': 'refreshBrandSelect',
+                })
+            return redirect('index_marcas')
     else:
         formulario = BrandForm()
-    return render(request, 'catalog/crear_marca.html', {'formulario': formulario})
+    template = 'catalog/crear_marca_popup.html' if is_popup else 'catalog/crear_marca.html'
+    return render(request, template, {'formulario': formulario})
 
 
 @role_required('DISTRIBUTOR')
@@ -194,7 +221,7 @@ def editar_marca(request, id):
         formulario = BrandForm(request.POST, instance=marca)
         if formulario.is_valid():
             formulario.save()
-            return redirect(index)
+            return redirect('index_marcas')
     else:
         formulario = BrandForm(instance=marca)
     return render(request, 'catalog/editar_marca.html', {
@@ -213,13 +240,15 @@ def _save_product_images(producto, formulario, request):
         ProductImage.objects.create(product=producto, image=f, is_main=False)
 
 
+
 @role_required('DISTRIBUTOR')
 def crear_producto(request):
+    distribuidor = request.user.distributor
     if request.method == 'POST':
-        formulario = ProductForm(request.POST, request.FILES, distributor=request.user.distributor)
+        formulario = ProductForm(request.POST, request.FILES, distributor=distribuidor)
         if formulario.is_valid():
             producto = formulario.save(commit=False)
-            producto.distributor = request.user.distributor
+            producto.distributor = distribuidor
             producto.save()
             _save_product_images(producto, formulario, request)
             AuditLog.objects.create(
@@ -229,19 +258,20 @@ def crear_producto(request):
                 entity_id=str(producto.id),
                 details={'name': producto.name, 'sku': producto.sku},
             )
-            check_low_stock_digest(request.user.distributor, request.user)
-            return redirect(index)
+            check_low_stock_digest(distribuidor, request.user)
+            return redirect('index_productos')
     else:
-        formulario = ProductForm(distributor=request.user.distributor)
+        formulario = ProductForm(distributor=distribuidor)
     return render(request, 'catalog/crear_producto.html', {'formulario': formulario})
 
 
 @role_required('DISTRIBUTOR')
 def editar_producto(request, id):
-    producto = get_object_or_404(Product, id=id, distributor=request.user.distributor)
+    distribuidor = request.user.distributor
+    producto = get_object_or_404(Product, id=id, distributor=distribuidor)
     if request.method == 'POST':
         formulario = ProductForm(
-            request.POST, request.FILES, instance=producto, distributor=request.user.distributor
+            request.POST, request.FILES, instance=producto, distributor=distribuidor
         )
         if formulario.is_valid():
             formulario.save()
@@ -253,10 +283,10 @@ def editar_producto(request, id):
                 entity_id=str(producto.id),
                 details={'name': producto.name, 'sku': producto.sku},
             )
-            check_low_stock_digest(request.user.distributor, request.user)
-            return redirect(index)
+            check_low_stock_digest(distribuidor, request.user)
+            return redirect('index_productos')
     else:
-        formulario = ProductForm(instance=producto, distributor=request.user.distributor)
+        formulario = ProductForm(instance=producto, distributor=distribuidor)
     return render(request, 'catalog/editar_producto.html', {
         'formulario': formulario,
         'producto': producto,
@@ -277,7 +307,7 @@ def eliminar_producto(request, id):
         entity_id=str(producto.id),
         details={'name': producto.name},
     )
-    return redirect(index)
+    return redirect('index_productos')
 
 
 @role_required('DISTRIBUTOR')
@@ -292,7 +322,7 @@ def reactivar_producto(request, id):
         entity_id=str(producto.id),
         details={'name': producto.name},
     )
-    return redirect(index)
+    return redirect('index_productos')
 
 
 @role_required('DISTRIBUTOR')
@@ -309,7 +339,7 @@ def descontinuar_producto(request, id):
         entity_id=str(producto.id),
         details={'name': producto.name},
     )
-    return redirect(index)
+    return redirect('index_productos')
 
 
 # --- Discount ---
@@ -363,7 +393,7 @@ def editar_stock(request, product_id):
         stock.quantity = cantidad
         stock.save(update_fields=['quantity'])
         check_low_stock_digest(request.user.distributor, request.user)
-        return redirect(index)
+        return redirect('index_productos')
     return render(request, 'catalog/editar_stock.html', {'producto': producto, 'stock': stock})
 
 
@@ -437,3 +467,27 @@ def importar_productos(request):
     else:
         formulario = ProductImportForm()
     return render(request, 'catalog/importar_productos.html', {'formulario': formulario})
+
+
+@role_required('DISTRIBUTOR')
+def mapa_tiendas(request):
+    import json
+    distribuidor = request.user.distributor
+    tiendas = Store.objects.filter(distributor=distribuidor)
+    markers = [
+        {
+            'id': t.id,
+            'name': t.name,
+            'address': t.address,
+            'lat': float(t.latitude),
+            'lng': float(t.longitude),
+        }
+        for t in tiendas
+        if t.latitude is not None and t.longitude is not None
+    ]
+    sin_coords = [t for t in tiendas if t.latitude is None or t.longitude is None]
+    return render(request, 'catalog/mapa_tiendas.html', {
+        'markers_json': json.dumps(markers),
+        'sin_coords': sin_coords,
+        'distribuidor': distribuidor,
+    })

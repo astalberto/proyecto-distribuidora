@@ -5,6 +5,9 @@ def notifications(request):
     user = getattr(request, 'user', None)
     if user is None or not user.is_authenticated:
         return {}
+    cart = request.session.get('cart', {}) if hasattr(request, 'session') else {}
+    cart_items_count = len(cart.get('items', [])) if cart else 0
     return {
         'unread_notification_count': user.notifications.filter(is_read=False).count(),
+        'cart_items_count': cart_items_count,
     }

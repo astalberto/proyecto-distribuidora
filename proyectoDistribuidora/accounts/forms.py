@@ -9,6 +9,7 @@ class DistributorForm(forms.ModelForm):
     class Meta:
         model = Distributor
         fields = ['name', 'email']
+        labels = {'name': 'Nombre', 'email': 'Correo electrónico'}
 
 
 class DistributorOnboardingForm(forms.Form):
@@ -94,19 +95,24 @@ class DistributorJoinForm(forms.Form):
 class UserCreateForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
-        # role is fixed by which "crear usuario" page the distributor is on
-        # (see accounts/views.py:crear_usuario); distributor is the caller's
-        # own tenant, set server-side — never a client-supplied field, or a
-        # distributor admin could assign a user to a different tenant.
         fields = ['email']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['email'].label = 'Correo electrónico'
+        self.fields['password1'].label = 'Contraseña'
+        self.fields['password2'].label = 'Confirmar contraseña'
 
 
 class UserEditForm(forms.ModelForm):
     class Meta:
         model = User
-        # distributor is intentionally not editable here — reassigning a
-        # user to a different tenant is not a DISTRIBUTOR-role action.
         fields = ['email', 'role', 'is_active']
+        labels = {
+            'email': 'Correo electrónico',
+            'role': 'Rol',
+            'is_active': 'Activo',
+        }
 
 
 class PasswordResetRequestForm(forms.Form):
@@ -138,7 +144,14 @@ class StoreOwnerSignupForm(forms.Form):
     owner_password2 = forms.CharField(label='Confirmar contraseña', widget=forms.PasswordInput)
     store_name = forms.CharField(label='Nombre de la tienda', max_length=255)
     store_address = forms.CharField(label='Dirección', max_length=255, required=False)
+    store_latitude = forms.DecimalField(
+        required=False, widget=forms.HiddenInput(), max_digits=9, decimal_places=6,
+    )
+    store_longitude = forms.DecimalField(
+        required=False, widget=forms.HiddenInput(), max_digits=9, decimal_places=6,
+    )
     store_phone = forms.CharField(label='Teléfono', max_length=20, required=False)
+
 
     def clean_owner_email(self):
         email = self.cleaned_data['owner_email']

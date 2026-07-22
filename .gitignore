@@ -143,3 +143,5 @@ cython_debug/
 pyvenv.cfg
 pip-selfcheck.json
 .claude
+
+products

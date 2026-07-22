@@ -15,7 +15,7 @@ from audit.models import AuditLog
 from catalog.models import ProductStatus, StockLevel, Store
 from orders.models import Order, OrderStatus
 from .decorators import role_required, superuser_required
-from .models import Distributor, DistributorInvitation, Notification, PasswordResetToken, Role, User
+from .models import Distributor, DistributorInvitation, Notification, PasswordResetToken, Role, TenantStatus, User
 from .forms import (
     DistributorForm,
     DistributorInvitationForm,
@@ -29,13 +29,101 @@ from .forms import (
 )
 
 
+def home_view(request):
+    if not request.user.is_authenticated:
+        return render(request, 'home.html')
+    if request.user.is_superuser or request.user.role == Role.SUPER_ADMIN:
+        return redirect('operator_dashboard')
+    role = request.user.role
+    if role == Role.DISTRIBUTOR:
+        return redirect('distributor_dashboard')
+    if role in (Role.VENDOR, Role.STORE_OWNER):
+        return redirect('index_orders')
+    if role == Role.DELIVERY:
+        return redirect('index_deliveries')
+    return render(request, 'home.html')
+
+
+# --- Operator views — platform-level, gated by @superuser_required ---
+
+@superuser_required
+def operator_dashboard(request):
+    distribuidores = (
+        Distributor.objects
+        .annotate(user_count=Count('users'))
+        .order_by('status', 'name')
+    )
+    totales = {s.value: 0 for s in TenantStatus}
+    for d in distribuidores:
+        if d.status in totales:
+            totales[d.status] += 1
+    return render(request, 'accounts/operator_dashboard.html', {
+        'distribuidores': distribuidores,
+        'totales': totales,
+        'TenantStatus': TenantStatus,
+    })
+
+
+@superuser_required
+def operator_tenant_detail(request, id):
+    distribuidor = get_object_or_404(Distributor, id=id)
+    usuarios = distribuidor.users.all()
+    audit_entries = AuditLog.objects.filter(
+        user__distributor=distribuidor
+    ).select_related('user').order_by('-id')[:20]
+    return render(request, 'accounts/operator_tenant_detail.html', {
+        'distribuidor': distribuidor,
+        'usuarios': usuarios,
+        'audit_entries': audit_entries,
+        'TenantStatus': TenantStatus,
+    })
+
+
+@superuser_required
+def operator_activate_tenant(request, id):
+    if request.method != 'POST':
+        return redirect('operator_tenant_detail', id=id)
+    distribuidor = get_object_or_404(Distributor, id=id)
+    distribuidor.status = TenantStatus.ACTIVE
+    distribuidor.save(update_fields=['status'])
+    AuditLog.objects.create(
+        user=request.user,
+        action='tenant_activated',
+        entity_type='Distributor',
+        entity_id=str(distribuidor.id),
+        details={'by': request.user.email},
+    )
+    messages.success(request, f'Distribuidor "{distribuidor.name}" activado.')
+    return redirect('operator_tenant_detail', id=id)
+
+
+@superuser_required
+def operator_suspend_tenant(request, id):
+    if request.method != 'POST':
+        return redirect('operator_tenant_detail', id=id)
+    distribuidor = get_object_or_404(Distributor, id=id)
+    distribuidor.status = TenantStatus.SUSPENDED
+    distribuidor.save(update_fields=['status'])
+    AuditLog.objects.create(
+        user=request.user,
+        action='tenant_suspended',
+        entity_type='Distributor',
+        entity_id=str(distribuidor.id),
+        details={'by': request.user.email},
+    )
+    messages.success(request, f'Distribuidor "{distribuidor.name}" suspendido.')
+    return redirect('operator_tenant_detail', id=id)
+
+
 @role_required('DISTRIBUTOR')
 def index(request):
     distribuidor = request.user.distributor
     usuarios = distribuidor.users.all() if distribuidor else User.objects.none()
+    tiendas = Store.objects.filter(distributor=distribuidor).select_related('owner', 'vendor') if distribuidor else Store.objects.none()
     return render(request, 'accounts/index.html', {
         'distribuidor': distribuidor,
         'usuarios': usuarios,
+        'tiendas': tiendas,
     })
 
 
@@ -98,10 +186,10 @@ def emitir_invitacion(request):
             if invitacion.target_email:
                 try:
                     send_mail(
-                        subject='Invitación — ISBER Solutions',
+                        subject='Invitación — ISBEN Solutions',
                         message=(
                             'Has sido invitado a registrar tu distribuidora en '
-                            f'ISBER Solutions. Usa este enlace (válido por 7 días): {join_url}'
+                            f'ISBEN Solutions. Usa este enlace (válido por 7 días): {join_url}'
                         ),
                         from_email=None,
                         recipient_list=[invitacion.target_email],
@@ -269,7 +357,9 @@ def crear_usuario(request, role):
             # Tenant isolation: the caller's own distributor, never client-supplied.
             usuario.distributor = request.user.distributor
             usuario.save()
-            return redirect(index)
+            if role == Role.STORE_OWNER:
+                return redirect('crear_tienda')
+            return redirect('index_accounts')
     else:
         formulario = UserCreateForm()
     return render(request, 'accounts/crear_usuario.html', {
@@ -413,6 +503,8 @@ def registrar_tienda(request, token):
                     name=formulario.cleaned_data['store_name'],
                     address=formulario.cleaned_data['store_address'],
                     phone_number=formulario.cleaned_data['store_phone'],
+                    latitude=formulario.cleaned_data.get('store_latitude'),
+                    longitude=formulario.cleaned_data.get('store_longitude'),
                     distributor=distribuidor,
                     owner=propietario,
                     # vendor intentionally left unassigned — the distributor
@@ -448,7 +540,7 @@ def solicitar_reset_password(request):
                     reverse('confirmar_reset_password', args=[token])
                 )
                 send_mail(
-                    subject='Restablecer contraseña — ISBER Solutions',
+                    subject='Restablecer contraseña — ISBEN Solutions',
                     message=(
                         'Usa este enlace para restablecer tu contraseña '
                         f'(válido por 1 hora): {reset_url}'
@@ -494,8 +586,19 @@ def confirmar_reset_password(request, token):
 
 @role_required(*Role.values)
 def notificaciones(request):
-    notifs = request.user.notifications.select_related('order').all()
-    return render(request, 'accounts/notificaciones.html', {'notificaciones': notifs})
+    unread = list(
+        request.user.notifications.filter(is_read=False)
+        .select_related('order')
+        .order_by('-created_at')
+    )
+    read_recent = list(
+        request.user.notifications.filter(is_read=True)
+        .select_related('order')
+        .order_by('-created_at')[:10]
+    )
+    return render(request, 'accounts/notificaciones.html', {
+        'notificaciones': unread + read_recent,
+    })
 
 
 @role_required(*Role.values)

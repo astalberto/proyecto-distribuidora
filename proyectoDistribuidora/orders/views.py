@@ -1,6 +1,6 @@
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
@@ -8,9 +8,40 @@ from django.utils import timezone
 from accounts.decorators import role_required
 from accounts.models import Notification
 from audit.models import AuditLog
-from catalog.models import StockLevel, Warehouse
+from catalog.models import Category, Product, ProductImage, ProductStatus, StockLevel, Store, Warehouse
 from .models import Order, OrderItem, OrderStatus
 from .forms import OrderForm, OrderItemForm, ReportarIncidenciaForm, ResolverIncidenciaForm
+
+
+def _ensure_cart(request, product_id, quantity):
+    cart = request.session.get('cart')
+    if cart:
+        return cart, None
+
+    stores = list(Store.objects.filter(owner=request.user, vendor__isnull=False))
+    if not stores:
+        messages.error(request, 'No tienes tiendas con vendedor asignado. Contacta al distribuidor.')
+        return None, redirect('explorar_productos')
+    if len(stores) == 1:
+        cart = {'store_id': stores[0].id, 'items': []}
+        request.session['cart'] = cart
+        return cart, None
+
+    store_id = request.POST.get('store_id')
+    if not store_id:
+        return None, render(request, 'orders/seleccionar_tienda.html', {
+            'stores': stores,
+            'product_id': product_id,
+            'quantity': quantity,
+        })
+    try:
+        store = next(s for s in stores if str(s.id) == store_id)
+    except StopIteration:
+        messages.error(request, 'Tienda no válida.')
+        return None, redirect('explorar_productos')
+    cart = {'store_id': store.id, 'items': []}
+    request.session['cart'] = cart
+    return cart, None
 
 
 def _orders_for(user):
@@ -34,24 +65,275 @@ def index(request):
 
 
 @role_required('STORE_OWNER')
-def crear_pedido(request):
+def iniciar_carrito(request):
     if request.method == 'POST':
         formulario = OrderForm(request.POST, owner=request.user)
         if formulario.is_valid():
-            pedido = formulario.save(commit=False)
-            # DR-01: vendor derived from store.vendor, not supplied by the form
-            if not pedido.store.vendor:
+            store = formulario.cleaned_data['store']
+            if not store.vendor:
                 formulario.add_error(
                     'store',
                     'Esta tienda no tiene un vendedor asignado. Contacta al distribuidor.'
                 )
             else:
-                pedido.vendor = pedido.store.vendor
-                pedido.save()
-                return redirect('ver_pedido', id=pedido.id)
+                request.session['cart'] = {'store_id': store.id, 'items': []}
+                return redirect('carrito')
     else:
         formulario = OrderForm(owner=request.user)
-    return render(request, 'orders/crear_pedido.html', {'formulario': formulario})
+    return render(request, 'orders/iniciar_carrito.html', {'formulario': formulario})
+
+
+@role_required('STORE_OWNER')
+def carrito(request):
+    cart = request.session.get('cart')
+    if not cart:
+        return redirect('explorar_productos')
+    store = get_object_or_404(
+        Store.objects.select_related('vendor', 'distributor'),
+        pk=cart['store_id'], owner=request.user,
+    )
+
+    if request.method == 'POST':
+        if 'add' in request.POST:
+            formulario = OrderItemForm(request.POST, vendor=store.vendor)
+            if formulario.is_valid():
+                product = formulario.cleaned_data['product']
+                quantity = formulario.cleaned_data['quantity']
+                items = cart['items']
+                for item in items:
+                    if item['product_id'] == product.id:
+                        item['quantity'] = quantity
+                        break
+                else:
+                    items.append({'product_id': product.id, 'quantity': quantity})
+                request.session.modified = True
+                return redirect('carrito')
+            # fall through to re-render with form errors
+        else:
+            # Single cart form: always apply qty edits first, then branch on button.
+            for item in cart['items']:
+                key = f"qty_{item['product_id']}"
+                if key in request.POST:
+                    try:
+                        item['quantity'] = max(1, int(request.POST[key]))
+                    except (ValueError, TypeError):
+                        pass
+            request.session.modified = True
+
+            if 'confirm' in request.POST:
+                return redirect('confirmar_carrito')
+            elif 'discard' in request.POST:
+                del request.session['cart']
+                return redirect('index_orders')
+            elif 'remove' in request.POST:
+                try:
+                    product_id = int(request.POST['remove'])
+                except (ValueError, TypeError):
+                    product_id = 0
+                cart['items'] = [i for i in cart['items'] if i['product_id'] != product_id]
+                request.session.modified = True
+                return redirect('carrito')
+
+    product_ids = [i['product_id'] for i in cart['items']]
+    products = {p.id: p for p in Product.objects.filter(id__in=product_ids)}
+    display_items = []
+    for i in cart['items']:
+        if i['product_id'] not in products:
+            continue
+        product = products[i['product_id']]
+        qty = i['quantity']
+        price = product.current_price()
+        display_items.append({'product': product, 'quantity': qty, 'subtotal': price * qty})
+    cart_total = sum(item['subtotal'] for item in display_items)
+    return render(request, 'orders/carrito.html', {
+        'store': store,
+        'display_items': display_items,
+        'cart_total': cart_total,
+    })
+
+
+@role_required('STORE_OWNER')
+def confirmar_carrito(request):
+    cart = request.session.get('cart')
+    if not cart or not cart['items']:
+        return redirect('carrito')
+    store = get_object_or_404(
+        Store.objects.select_related('vendor', 'distributor'),
+        pk=cart['store_id'], owner=request.user,
+    )
+
+    if request.method == 'POST':
+        with transaction.atomic():
+            pedido = Order.objects.create(
+                store=store,
+                vendor=store.vendor,
+                status=OrderStatus.PENDING,
+            )
+            default_warehouse = Warehouse.get_or_create_default(store.distributor)
+            for item_data in cart['items']:
+                try:
+                    product = Product.objects.get(
+                        id=item_data['product_id'],
+                        distributor=store.distributor,
+                        status=ProductStatus.ACTIVE,
+                    )
+                except Product.DoesNotExist:
+                    continue
+                OrderItem.objects.create(
+                    order=pedido,
+                    product=product,
+                    quantity=item_data['quantity'],
+                    unit_price_at_time=product.current_price(),
+                    warehouse=default_warehouse,
+                )
+            AuditLog.objects.create(
+                user=request.user,
+                action='order_created',
+                entity_type='Order',
+                entity_id=str(pedido.id),
+                new_status=OrderStatus.PENDING,
+            )
+        del request.session['cart']
+        return redirect('ver_pedido', id=pedido.id)
+
+    product_ids = [i['product_id'] for i in cart['items']]
+    products = {p.id: p for p in Product.objects.filter(id__in=product_ids)}
+    display_items = []
+    for i in cart['items']:
+        if i['product_id'] not in products:
+            continue
+        product = products[i['product_id']]
+        qty = i['quantity']
+        price = product.current_price()
+        display_items.append({'product': product, 'quantity': qty, 'subtotal': price * qty})
+    cart_total = sum(item['subtotal'] for item in display_items)
+    return render(request, 'orders/confirmar_carrito.html', {
+        'store': store,
+        'display_items': display_items,
+        'cart_total': cart_total,
+    })
+
+
+@role_required('STORE_OWNER')
+def explorar_productos(request):
+    distributor = request.user.distributor
+
+    if request.method == 'POST':
+        try:
+            product_id = int(request.POST.get('product_id', 0))
+            quantity = max(1, int(request.POST.get('quantity', 1)))
+        except (ValueError, TypeError):
+            return redirect('explorar_productos')
+
+        cart, response = _ensure_cart(request, product_id, quantity)
+        if response is not None:
+            return response
+
+        try:
+            product = Product.objects.get(
+                id=product_id, distributor=distributor, status=ProductStatus.ACTIVE,
+            )
+        except Product.DoesNotExist:
+            return redirect('explorar_productos')
+
+        items = cart['items']
+        for item in items:
+            if item['product_id'] == product.id:
+                item['quantity'] = quantity
+                break
+        else:
+            items.append({'product_id': product.id, 'quantity': quantity})
+        request.session.modified = True
+        return redirect('explorar_productos')
+
+    # GET
+    products_qs = (
+        Product.objects.filter(distributor=distributor, status=ProductStatus.ACTIVE)
+        .select_related('category', 'brand')
+        .prefetch_related(
+            Prefetch('images', queryset=ProductImage.objects.filter(is_main=True), to_attr='main_images')
+        )
+        .order_by('name')
+    )
+    q = request.GET.get('q', '').strip()
+    if q:
+        products_qs = products_qs.filter(name__icontains=q)
+    categoria_id = request.GET.get('categoria', '').strip()
+    if categoria_id:
+        products_qs = products_qs.filter(category_id=categoria_id)
+
+    categorias = Category.objects.filter(distributor=distributor).order_by('name')
+    cart = request.session.get('cart')
+    cart_map = {item['product_id']: item['quantity'] for item in cart['items']} if cart else {}
+    store = Store.objects.filter(pk=cart['store_id'], owner=request.user).first() if cart else None
+
+    display_products = []
+    for product in products_qs:
+        display_products.append({
+            'product': product,
+            'price': product.current_price(),
+            'stock': product.total_stock(),
+            'in_cart': cart_map.get(product.id, 0),
+            'main_image': product.main_images[0] if product.main_images else None,
+        })
+
+    return render(request, 'orders/explorar_productos.html', {
+        'display_products': display_products,
+        'categorias': categorias,
+        'q': q,
+        'categoria_id': categoria_id,
+        'cart_count': len(cart['items']) if cart else 0,
+        'store': store,
+    })
+
+
+@role_required('STORE_OWNER')
+def ver_producto_orden(request, id):
+    distributor = request.user.distributor
+    product = get_object_or_404(
+        Product.objects.filter(distributor=distributor, status=ProductStatus.ACTIVE)
+        .select_related('category', 'brand')
+        .prefetch_related('images', 'stock_levels__warehouse'),
+        pk=id,
+    )
+    cart = request.session.get('cart')
+
+    if request.method == 'POST':
+        try:
+            quantity = max(1, int(request.POST.get('quantity', 1)))
+        except (ValueError, TypeError):
+            quantity = 1
+
+        cart, response = _ensure_cart(request, product.id, quantity)
+        if response is not None:
+            return response
+
+        items = cart['items']
+        for item in items:
+            if item['product_id'] == product.id:
+                item['quantity'] = quantity
+                break
+        else:
+            items.append({'product_id': product.id, 'quantity': quantity})
+        request.session.modified = True
+        return redirect('explorar_productos')
+
+    in_cart = 0
+    if cart:
+        for item in cart['items']:
+            if item['product_id'] == product.id:
+                in_cart = item['quantity']
+                break
+
+    return render(request, 'orders/ver_producto_orden.html', {
+        'product': product,
+        'price': product.current_price(),
+        'stock': product.total_stock(),
+        'stock_levels': product.stock_levels.select_related('warehouse').all(),
+        'images': product.images.all(),
+        'in_cart': in_cart,
+        'cart_count': len(cart['items']) if cart else 0,
+    })
 
 
 @role_required('STORE_OWNER', 'VENDOR', 'DISTRIBUTOR')
@@ -338,11 +620,18 @@ def reportar_incidencia(request, id):
     })
 
 
-@role_required('VENDOR')
+@role_required('VENDOR', 'DISTRIBUTOR')
 def resolver_incidencia(request, id):
-    pedido = get_object_or_404(
-        Order, id=id, vendor=request.user, status=OrderStatus.DELIVERY_ISSUE
-    )
+    if request.user.role == 'DISTRIBUTOR':
+        pedido = get_object_or_404(
+            Order, id=id,
+            store__distributor=request.user.distributor,
+            status=OrderStatus.DELIVERY_ISSUE,
+        )
+    else:
+        pedido = get_object_or_404(
+            Order, id=id, vendor=request.user, status=OrderStatus.DELIVERY_ISSUE
+        )
     if request.method == 'POST':
         formulario = ResolverIncidenciaForm(request.POST, instance=pedido)
         if formulario.is_valid():

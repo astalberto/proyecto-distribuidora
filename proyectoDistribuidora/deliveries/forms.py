@@ -6,10 +6,11 @@ from .models import DeliveryConfirmation
 class DeliveryConfirmationForm(forms.ModelForm):
     class Meta:
         model = DeliveryConfirmation
-        # delivery_user is set server-side from request.user — never
-        # client-supplied, or anyone could attribute a confirmation to
-        # someone else. See deliveries/views.py.
-        fields = ['order', 'photo_public_id', 'confirmed_at']
+        fields = ['order', 'confirmed_at']
+        labels = {
+            'order': 'Pedido',
+            'confirmed_at': 'Confirmado en',
+        }
 
     def __init__(self, *args, distributor=None, **kwargs):
         super().__init__(*args, **kwargs)

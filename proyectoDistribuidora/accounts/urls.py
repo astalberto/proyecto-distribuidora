@@ -2,6 +2,12 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Operator panel — platform-level, @superuser_required on each view
+    path('admin-panel/', views.operator_dashboard, name='operator_dashboard'),
+    path('admin-panel/distributors/<int:id>/', views.operator_tenant_detail, name='operator_tenant_detail'),
+    path('admin-panel/distributors/<int:id>/activate/', views.operator_activate_tenant, name='operator_activate_tenant'),
+    path('admin-panel/distributors/<int:id>/suspend/', views.operator_suspend_tenant, name='operator_suspend_tenant'),
+
     path('dashboard/', views.dashboard, name='distributor_dashboard'),
     path('users/', views.index, name='index_accounts'),
     path('distributors/<int:id>/', views.obtener_distribuidor, name='obtener_distribuidor'),

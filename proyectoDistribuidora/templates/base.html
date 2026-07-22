@@ -4,25 +4,38 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width">
-    <title>{% block title %}ISBER Solutions{% endblock %}</title>
+    <title>{% block title %}ISBEN Solutions{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
   </head>
   <body>
     <header>
-      <h1>ISBER Solutions — Distribuidora</h1>
+      <h1>ISBEN Solutions — Distribuidora</h1>
       <nav>
         <ul>
           <li><a href="{% url 'home' %}">Inicio</a></li>
           {% if user.is_authenticated %}
-          {% if user.role == 'DISTRIBUTOR' %}
-          <li><a href="{% url 'distributor_dashboard' %}">Dashboard</a></li>
-          {% endif %}
-          <li><a href="{% url 'index_accounts' %}">Usuarios</a></li>
-          <li><a href="{% url 'index_catalog' %}">Catálogo</a></li>
-          <li><a href="{% url 'index_orders' %}">Pedidos</a></li>
-          <li><a href="{% url 'index_deliveries' %}">Entregas</a></li>
-          <li><a href="{% url 'index_audit' %}">Auditoría</a></li>
-          <li><a href="{% url 'notificaciones' %}">Notificaciones{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</a></li>
+            {% if user.is_superuser %}
+              <li><a href="{% url 'operator_dashboard' %}">Panel de operador</a></li>
+              <li><a href="{% url 'crear_distribuidor' %}">Crear distribuidor</a></li>
+              <li><a href="{% url 'invitaciones' %}">Invitaciones</a></li>
+            {% elif user.role == 'DISTRIBUTOR' %}
+              <li><a href="{% url 'distributor_dashboard' %}">Dashboard</a></li>
+              <li><a href="{% url 'index_catalog' %}">Catálogo</a></li>
+              <li><a href="{% url 'index_orders' %}">Pedidos</a></li>
+              <li><a href="{% url 'index_accounts' %}">Usuarios</a></li>
+              <li><a href="{% url 'index_audit' %}">Auditoría</a></li>
+              <li><a href="{% url 'notificaciones' %}">Notificaciones{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</a></li>
+            {% elif user.role == 'VENDOR' or user.role == 'STORE_OWNER' %}
+              {% if user.role == 'STORE_OWNER' %}
+                <li><a href="{% url 'explorar_productos' %}">Explorar Productos</a></li>
+                <li><a href="{% url 'carrito' %}">Carrito{% if cart_items_count %} ({{ cart_items_count }}){% endif %}</a></li>
+              {% endif %}
+              <li><a href="{% url 'index_orders' %}">Pedidos</a></li>
+              <li><a href="{% url 'notificaciones' %}">Notificaciones{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</a></li>
+            {% elif user.role == 'DELIVERY' %}
+              <li><a href="{% url 'index_deliveries' %}">Entregas</a></li>
+              <li><a href="{% url 'notificaciones' %}">Notificaciones{% if unread_notification_count %} ({{ unread_notification_count }}){% endif %}</a></li>
+            {% endif %}
           {% endif %}
         </ul>
       </nav>

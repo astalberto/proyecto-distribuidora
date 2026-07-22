@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Carrito — {{ store.name }}{% endblock %}
+{% block content %}
+<h2>Pedido para {{ store.name }}</h2>
+
+<h3>Productos en el carrito</h3>
+{% if display_items %}
+<form method="post">
+  {% csrf_token %}
+  <table border="1">
+    <thead>
+      <tr>
+        <th>Producto</th>
+        <th>Cantidad</th>
+        <th>Precio unit.</th>
+        <th>Subtotal</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in display_items %}
+      <tr>
+        <td>{{ item.product.name }}</td>
+        <td>
+          <input type="number" name="qty_{{ item.product.id }}"
+                 value="{{ item.quantity }}" min="1" style="width:5em">
+        </td>
+        <td>${{ item.product.current_price }}</td>
+        <td>${{ item.subtotal }}</td>
+        <td>
+          <button type="submit" name="remove" value="{{ item.product.id }}">Quitar</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3"><strong>Total</strong></td>
+        <td><strong>${{ cart_total }}</strong></td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <br>
+  <button type="submit" name="confirm" value="1">Revisar y confirmar →</button>
+  &nbsp;
+  <button type="submit" name="discard" value="1"
+          onclick="return confirm('¿Descartar el carrito? No se guardará nada.')">Descartar</button>
+</form>
+{% else %}
+<p>Sin productos aún. Agrega al menos uno para poder confirmar.</p>
+<form method="post">
+  {% csrf_token %}
+  <button type="submit" name="discard" value="1"
+          onclick="return confirm('¿Descartar el carrito?')">Descartar</button>
+</form>
+{% endif %}
+
+<p><a href="{% url 'explorar_productos' %}">+ Explorar y agregar productos</a></p>
+{% endblock %}

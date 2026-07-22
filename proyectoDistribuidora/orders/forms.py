@@ -6,11 +6,8 @@ from .models import Order, OrderItem
 class OrderForm(forms.ModelForm):
     class Meta:
         model = Order
-        # status/previous_order/rejection_reason are never client-editable —
-        # status only changes through the dedicated accept/reject/dispatch/
-        # cancel views; previous_order and rejection_reason are set
-        # server-side by those views, not by the store owner.
         fields = ['store']
+        labels = {'store': 'Tienda'}
 
     def __init__(self, *args, owner=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -47,9 +44,8 @@ class ResolverIncidenciaForm(forms.ModelForm):
 class OrderItemForm(forms.ModelForm):
     class Meta:
         model = OrderItem
-        # unit_price_at_time is never client-editable — the view snapshots
-        # it server-side from Product.unit_price at save time (FR-05.4).
         fields = ['product', 'quantity']
+        labels = {'product': 'Producto', 'quantity': 'Cantidad'}
 
     def __init__(self, *args, vendor=None, **kwargs):
         super().__init__(*args, **kwargs)

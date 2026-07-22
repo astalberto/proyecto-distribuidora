@@ -1,14 +1,15 @@
 {% extends 'base.html' %}
-{% block title %}Inicio{% endblock %}
+{% block title %}ISBEN Solutions — Plataforma de distribución{% endblock %}
 {% block content %}
-<h2>Panel de navegación</h2>
-<p>ISBER Solutions — Distribuidora Loja</p>
-<ul>
-  <li><a href="{% url 'index_accounts' %}">Usuarios</a> — Distribuidores, vendedores, tiendas y repartidores.</li>
-  <li><a href="{% url 'index_catalog' %}">Catálogo</a> — Productos, tiendas e inventario por vendedor.</li>
-  <li><a href="{% url 'index_orders' %}">Pedidos</a> — Ciclo completo: pendiente → aceptado → despachado → entregado.</li>
-  <li><a href="{% url 'index_deliveries' %}">Entregas</a> — Cola de confirmaciones de entrega.</li>
-  <li><a href="{% url 'index_audit' %}">Auditoría</a> — Registro de transiciones de estado. Solo lectura.</li>
-  <li><a href="/admin/">Django Admin</a> — Panel de administración.</li>
-</ul>
+<div class="landing">
+  <h2>Plataforma de distribución ISBEN</h2>
+  <p>Sistema integral para gestionar el ciclo completo de distribución: desde el catálogo de productos hasta la confirmación de entrega en tienda.</p>
+  <ul>
+    <li><strong>Distribuidores</strong> — administran el catálogo, inventario, usuarios y ven métricas del negocio.</li>
+    <li><strong>Vendedores</strong> — reciben pedidos de las tiendas, verifican stock y coordinan el despacho.</li>
+    <li><strong>Tiendas</strong> — crean y hacen seguimiento de sus pedidos, confirman la recepción.</li>
+    <li><strong>Repartidores</strong> — registran las entregas realizadas en ruta.</li>
+  </ul>
+  <a href="{% url 'login' %}" class="btn-primary">Iniciar sesión</a>
+</div>
 {% endblock %}

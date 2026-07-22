@@ -407,39 +407,66 @@ work next, isolated integration third).
         for (no `select_for_update()` on `PasswordResetToken` lookup-and-mark-used). P2 —
         low real-world exploitability but a real gap in a security-sensitive flow, now
         that it's been noticed.
-- [ ] **Item 1 — Rebrand ISBER → ISBEN.** Mechanical but wide: touches `templates/base.html`,
-      `templates/home.html`, `static/css/styles.css`, `docs/requirements.md`,
-      `docs/DESIGN.md`, `docs/ux-navigation-wireframes.md`, `README.md`,
-      `proyectoDistribuidora/proyectoDistribuidora/settings.py`, and
-      `PRESENTACION-1BIM/main.tex` (10 files total, confirmed via repo-wide grep
-      2026-07-21). No functional risk, no interdependency with the other 4 items — can slot
-      in anytime after item 3.
-- [ ] **Item 5 — Store/distributor location maps.** Interactive map showing store and
-      distributor physical locations. Provider TBD at review time (free-tier requirement
-      named by the project owner — likely OpenStreetMap/Leaflet, no API key or billing
-      account, vs. Google Maps' API-key-gated free tier). Fully isolated — no dependency on
-      the other 4 items.
-- [ ] **Item 4 — Super Administrator dashboard + multi-tenant SaaS foundation.** Distributor
-      management, user management, platform statistics, system monitoring, global settings,
-      for a new `is_superuser`-gated tier that today has no presence in `accounts.Role` or
-      the RBAC system. Explicitly named by the project owner as also laying groundwork for
-      evolving the app into a multi-tenant SaaS platform — the largest and least-scoped item
-      in the roadmap. **Recommendation (not yet actioned): run a dedicated `/office-hours`
-      pass on this item specifically before its `/plan-ceo-review`,** given its strategic
-      weight (billing/tenant-provisioning/impersonation questions aren't scoped yet).
-- [ ] **Item 2 — Role-based navigation/UX redesign.** Replace the single shared `<nav>` in
-      `templates/base.html:13-27` (currently gated only by one `user.role == 'DISTRIBUTOR'`
-      check; every other authenticated role sees the identical flat link list) with a
-      personalized per-role menu/dashboard, reducing unnecessary page transitions. Deliberately
-      sequenced last so it can account for whatever role/dashboard structure item 4
-      introduces, rather than needing rework afterward.
+- [x] **Item 1 — Rebrand ISBER → ISBEN — DONE 2026-07-22 (bundled with Item 2).** All 8
+      remaining ISBER occurrences replaced with ISBEN across `templates/base.html`,
+      `templates/home.html`, `accounts/views.py`, `settings.py`, `static/css/styles.css`,
+      `docs/requirements.md`, `docs/DESIGN.md`, `docs/ux-navigation-wireframes.md`,
+      `README.md`, and `PRESENTACION-1BIM/main.tex`.
+- [x] **Item 5 — Store location maps — DONE 2026-07-22.** Interactive Leaflet.js map
+      (OpenStreetMap tiles — no API key, no billing) accessible to the DISTRIBUTOR role at
+      `/catalog/stores/map/`. **What shipped:** `latitude` + `longitude` optional
+      DecimalField(9,6) added to `Store` (migration `catalog/0008`); `StoreForm` updated to
+      expose both fields so distributors can set coordinates when creating/editing a store;
+      `mapa_tiendas` view serializes located stores to JSON and renders markers (clicking a
+      marker shows name + address popup); stores without coordinates are listed separately
+      below the map with edit links; map auto-centers on the average of all markers (falls
+      back to Loja, Ecuador when no stores are mapped yet) and calls `fitBounds` when there
+      are multiple markers; "Mapa" nav link added to the DISTRIBUTOR navbar.
+      **Scope note:** distributor physical location not mapped — Distributor has no address
+      field and is the admin entity rather than a delivery destination; can be added in a
+      future sprint by adding address/lat/lng to `Distributor` if needed.
+- [x] **Item 4 — Super Administrator dashboard + multi-tenant SaaS foundation — DONE 2026-07-22.**
+      PoC (Approach B) implemented after a dedicated `/office-hours` design pass.
+      **What shipped:**
+      - `SUPER_ADMIN` added to `accounts.Role` — RBAC now covers the operator tier with one
+        decorator (`@superuser_required`), no parallel `is_superuser` branch needed.
+      - `TenantStatus` (ACTIVE/SUSPENDED/TRIAL/CANCELLED) and `TenantPlan` (FREE/STANDARD/PREMIUM)
+        added to `Distributor` (migration `0007`). `plan` is the billing extensibility hook —
+        no payment plumbing yet, intentional.
+      - `create_superuser` auto-sets `role=SUPER_ADMIN`; the decorator also accepts bare
+        `is_superuser=True` for backward compat with existing users.
+      - `/accounts/admin-panel/` operator dashboard: all distributors with status/plan/user-count,
+        links to tenant detail pages.
+      - `/accounts/admin-panel/distributors/<id>/` tenant detail: info card, user list with
+        impersonate links, last 20 AuditLog entries, Activate/Suspend action buttons.
+      - Activate/Suspend endpoints (POST-only), each writing an `AuditLog` entry.
+      - `django-impersonate==1.9.1` wired in: `impersonate.middleware.ImpersonateMiddleware`,
+        `impersonate.urls` at `/impersonate/`. Signals connect to AuditLog for
+        `impersonation_started` / `impersonation_ended` with both operator and target email stamped.
+      - `TenantStatusMiddleware`: SUSPENDED tenants see a 403 page on all non-exempt paths;
+        exemptions: `/login/`, `/logout/`, `/admin-panel/`, `/admin/`, `/impersonate/`.
+      - Impersonation banner in `base.html` (visible during active impersonation sessions).
+      - Superuser home (`/`) now redirects directly to the operator dashboard.
+      - `manage.py check` → 0 issues.
+      **Open for future sprints:** billing/Stripe webhook to populate `plan`, `suspended_at`
+      timestamp + scheduled hard-delete policy, cross-tenant platform-wide analytics view.
+- [x] **Item 2 — Role-based navigation/UX redesign — DONE 2026-07-22.** Replaced the flat
+      shared nav with per-role menus: DISTRIBUTOR sees Dashboard/Catálogo/Pedidos/Usuarios/
+      Auditoría/Notificaciones; VENDOR and STORE_OWNER see Pedidos/Notificaciones; DELIVERY
+      sees Entregas/Notificaciones; superuser sees Crear distribuidor/Invitaciones/Admin.
+      Login redirects each role directly to their primary page (DISTRIBUTOR → dashboard,
+      VENDOR/STORE_OWNER → orders, DELIVERY → deliveries, superuser → superuser home).
+      Unauthenticated home redesigned as a landing page explaining the platform.
+      All `admin:index` back-links in superuser templates replaced with `{% url 'home' %}`.
+      ISBEN rebrand (Items 1 + 2 bundled): all 8 remaining ISBER occurrences across views,
+      settings, CSS, and docs replaced with ISBEN.
 
 ## Cross-cutting / housekeeping
 
 - [x] Tenant/role-scope the DRF catalog API (`catalog/api_views.py`) — done as part of
       Tier 1 (see above): `IsDistributor` permission + tenant-scoped `get_queryset` +
       cross-tenant FK rejection on create.
-- [ ] Decide on the committed `proyectoDistribuidora.zip` at the repo root — very
+- [x] Decide on the committed `proyectoDistribuidora.zip` at the repo root — very
       likely an accidental commit, not evaluated further here.
 - [ ] Either actually adopt Tailwind or drop the claim — current CSS
       (`static/css/styles.css`) is hand-written, not Tailwind, despite an earlier commit

@@ -2,33 +2,138 @@
 {% block title %}Cola de Entregas{% endblock %}
 {% block content %}
 <h2>Cola de Entregas</h2>
-<p><a href="{% url 'crear_confirmacion' %}">+ Confirmar Entrega</a></p>
 
-<table border="1">
+{% if pending %}
+<h3 style="margin-bottom:0.5rem;">Pendientes de entrega</h3>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin-bottom:2rem;">
+  {% for order in pending %}
+  <div style="border:1px solid #ddd;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:0.4rem;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <strong style="font-size:1rem;">{{ order.store.name }}</strong>
+      <span style="background:#fff3cd;color:#856404;font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;">Despachado</span>
+    </div>
+
+    {% if order.store.address %}
+    <span style="color:#555;font-size:0.875rem;">{{ order.store.address }}</span>
+    {% endif %}
+    {% if order.store.phone_number %}
+    <span style="color:#555;font-size:0.875rem;">Tel: {{ order.store.phone_number }}</span>
+    {% endif %}
+
+    <div style="font-size:0.85rem;color:#444;margin-top:0.25rem;">
+      {% for item in order.items.all|slice:":3" %}
+        <div>· {{ item.product.name }} × {{ item.quantity }}</div>
+      {% endfor %}
+      {% if order.items.count > 3 %}
+        <div style="color:#888;">…y {{ order.items.count|add:"-3" }} producto{{ order.items.count|add:"-3"|pluralize }} más</div>
+      {% endif %}
+    </div>
+
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">
+      {% if order.store.latitude and order.store.longitude %}
+      <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.store.latitude }},{{ order.store.longitude }}"
+         target="_blank" rel="noopener noreferrer"
+         style="font-size:0.85rem;padding:0.3rem 0.6rem;border:1px solid #0070c0;border-radius:4px;color:#0070c0;text-decoration:none;">
+        Cómo llegar ↗
+      </a>
+      {% elif order.store.address %}
+      <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.store.address|urlencode }}"
+         target="_blank" rel="noopener noreferrer"
+         style="font-size:0.85rem;padding:0.3rem 0.6rem;border:1px solid #0070c0;border-radius:4px;color:#0070c0;text-decoration:none;">
+        Cómo llegar ↗
+      </a>
+      {% endif %}
+
+      <a href="{% url 'ver_pedido_entrega' order.id %}"
+         style="font-size:0.85rem;padding:0.3rem 0.6rem;border:1px solid #555;border-radius:4px;color:#555;text-decoration:none;">
+        Ver detalles
+      </a>
+
+      {% if user.role == 'DELIVERY' %}
+      <form method="post" action="{% url 'confirmar_entrega' order.id %}" style="margin:0;">
+        {% csrf_token %}
+        <button type="submit"
+                style="font-size:0.85rem;padding:0.3rem 0.6rem;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+          Confirmar Entrega ✓
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p style="color:#666;margin-bottom:2rem;">No hay pedidos despachados pendientes de entrega.</p>
+{% endif %}
+
+<h3 style="margin-bottom:0.5rem;">Incidencias reportadas</h3>
+{% if issues %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin-bottom:2rem;">
+  {% for order in issues %}
+  <div style="border:1px solid #ffc107;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:0.4rem;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <strong style="font-size:1rem;">{{ order.store.name }}</strong>
+      <span style="background:#f8d7da;color:#842029;font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:4px;">Con incidencia</span>
+    </div>
+    {% if order.store.address %}
+    <span style="color:#555;font-size:0.875rem;">{{ order.store.address }}</span>
+    {% endif %}
+    {% if order.issue_description %}
+    <p style="margin:0.25rem 0;font-size:0.875rem;color:#444;"><strong>Problema:</strong> {{ order.issue_description|truncatechars:120 }}</p>
+    {% endif %}
+    {% if order.issue_reported_at %}
+    <small style="color:#888;">Reportado: {{ order.issue_reported_at|date:"d/m/Y H:i" }}</small>
+    {% endif %}
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">
+      <a href="{% url 'ver_pedido_entrega' order.id %}"
+         style="font-size:0.85rem;padding:0.3rem 0.6rem;border:1px solid #555;border-radius:4px;color:#555;text-decoration:none;">
+        Ver detalles
+      </a>
+      {% if user.role == 'DISTRIBUTOR' %}
+      <a href="{% url 'resolver_incidencia' order.id %}"
+         style="font-size:0.85rem;padding:0.3rem 0.6rem;border:1px solid #c00;border-radius:4px;color:#c00;text-decoration:none;">
+        Resolver incidencia
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p style="color:#666;margin-bottom:2rem;">Sin incidencias activas.</p>
+{% endif %}
+
+<h3 style="margin-bottom:0.5rem;">Historial de entregas</h3>
+{% if history %}
+<table border="1" style="width:100%;border-collapse:collapse;">
   <thead>
     <tr>
-      <th>Pedido</th>
-      <th>Repartidor</th>
-      <th>Foto ID (opcional, sin validar)</th>
-      <th>Confirmado en</th>
-      <th>Acciones</th>
+      <th style="padding:0.4rem 0.6rem;text-align:left;">Pedido</th>
+      <th style="padding:0.4rem 0.6rem;text-align:left;">Tienda</th>
+      <th style="padding:0.4rem 0.6rem;text-align:left;">Repartidor</th>
+      <th style="padding:0.4rem 0.6rem;text-align:left;">Confirmado en</th>
+      {% if user.role == 'DISTRIBUTOR' %}<th style="padding:0.4rem 0.6rem;"></th>{% endif %}
     </tr>
   </thead>
   <tbody>
-    {% for c in confirmaciones %}
+    {% for c in history %}
     <tr>
-      <td>{{ c.order }}</td>
-      <td>{{ c.delivery_user }}</td>
-      <td><code>{{ c.photo_public_id }}</code></td>
-      <td>{{ c.confirmed_at|date:"d/m/Y H:i" }}</td>
-      <td>
+      <td style="padding:0.4rem 0.6rem;">#{{ c.order.id }}</td>
+      <td style="padding:0.4rem 0.6rem;">{{ c.order.store.name }}</td>
+      <td style="padding:0.4rem 0.6rem;">{{ c.delivery_user.email }}</td>
+      <td style="padding:0.4rem 0.6rem;">{{ c.confirmed_at|date:"d/m/Y H:i" }}</td>
+      {% if user.role == 'DISTRIBUTOR' %}
+      <td style="padding:0.4rem 0.6rem;">
         <a href="{% url 'editar_confirmacion' c.id %}">Editar</a> |
-        <a href="{% url 'eliminar_confirmacion' c.id %}" onclick="return confirm('¿Eliminar confirmación?')">Eliminar</a>
+        <a href="{% url 'eliminar_confirmacion' c.id %}"
+           onclick="return confirm('¿Eliminar confirmación?')">Eliminar</a>
       </td>
+      {% endif %}
     </tr>
-    {% empty %}
-    <tr><td colspan="5">No hay confirmaciones de entrega.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+{% else %}
+<p style="color:#666;">Sin entregas registradas aún.</p>
+{% endif %}
 {% endblock %}

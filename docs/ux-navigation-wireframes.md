@@ -1,5 +1,5 @@
 # UX Navigation Flows & Conceptual Wireframes
-# ISBER Solutions Distribution Platform
+# ISBEN Solutions Distribution Platform
 
 **Author:** UX/Product Design
 **Based on:** `docs/requirements.md` (business rules) + the actual running code as of 2026-07-19
@@ -18,7 +18,7 @@
 
 > **This revision replaces the original pre-implementation draft (2026-07-01).** That draft described an aspirational UI (multi-step wizards, JS modals, stat cards, Cloudinary photo gating) written before any of it was built. The actual app is plain server-rendered Django templates with `<table border="1">` layouts, browser `confirm()` dialogs instead of modals, and no client-side framework. Every flow and wireframe below is corrected to match what's actually running; the original aspirational design is preserved as **🔮 Future Upgrade** call-outs so the vision isn't lost, just clearly labeled as not-yet-built.
 >
-> **Naming note:** this document (like the rest of the codebase) says "ISBER Solutions." The brand/logo assets say "ISBEN SOLUTION." See `DESIGN.md` for the unresolved discrepancy.
+> **Naming note:** this document (like the rest of the codebase) says "ISBEN Solutions." The brand/logo assets say "ISBEN SOLUTION." See `DESIGN.md` for the unresolved discrepancy.
 
 ---
 
@@ -421,7 +421,7 @@ Layouts below reflect the actual rendered HTML: plain `<table border="1">` data 
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  ISBER Solutions — Distribuidora                                  │
+│  ISBEN Solutions — Distribuidora                                  │
 │  [Inicio] [Dashboard]* [Usuarios] [Catálogo] [Pedidos] [Entregas] │
 │  [Auditoría] [Notificaciones (N)]      [correo (Rol)] [Cerrar sesión] │
 ├──────────────────────────────────────────────────────────────────┤

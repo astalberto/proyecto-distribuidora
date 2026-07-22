@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Editar Categoría{% endblock %}
 {% block content %}
-<p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
+<p><a href="{% url 'index_categorias' %}">← Volver al Catálogo</a></p>
 <h2>Editar Categoría: {{ categoria.name }}</h2>
 <form method="post">
   {% csrf_token %}
   {{ formulario.as_p }}
   <p>
     <input type="submit" value="Actualizar">
-    <a href="{% url 'index_catalog' %}">Cancelar</a>
+    <a href="{% url 'index_categorias' %}">Cancelar</a>
   </p>
 </form>
 {% endblock %}

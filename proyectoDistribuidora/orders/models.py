@@ -5,17 +5,17 @@ from catalog.models import Store, Product, Warehouse
 
 
 class OrderStatus(models.TextChoices):
-    PENDING = "PENDING", "Pending"
-    ACCEPTED = "ACCEPTED", "Accepted"
-    REJECTED = "REJECTED", "Rejected"
-    DISPATCHED = "DISPATCHED", "Dispatched"
+    PENDING = "PENDING", "Pendiente"
+    ACCEPTED = "ACCEPTED", "Aceptado"
+    REJECTED = "REJECTED", "Rechazado"
+    DISPATCHED = "DISPATCHED", "Despachado"
     # DELIVERED is non-terminal: it means "delivery person dropped it off,
     # awaiting store owner confirmation" (DR-09). The store owner then moves
     # it to CONFIRMED (received as expected) or DELIVERY_ISSUE (dispute);
     # resolving an issue moves it back to CONFIRMED.
-    DELIVERED = "DELIVERED", "Delivered"
-    DELIVERY_ISSUE = "DELIVERY_ISSUE", "Delivery Issue"
-    CONFIRMED = "CONFIRMED", "Confirmed"
+    DELIVERED = "DELIVERED", "Entregado"
+    DELIVERY_ISSUE = "DELIVERY_ISSUE", "Problema de Entrega"
+    CONFIRMED = "CONFIRMED", "Confirmado"
 
 
 class Order(models.Model):

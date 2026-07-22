@@ -31,6 +31,8 @@ ALLOWED_HOSTS = [
 ]
 
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -67,6 +69,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'accounts.middleware.TenantStatusMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -163,7 +166,7 @@ LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'home'
 
 # Password reset (Sprint 1, Lane B). Console backend prints the reset email
-# to stdout for local dev — swap for the Resend SMTP relay once ISBER
+# to stdout for local dev — swap for the Resend SMTP relay once ISBEN
 # provides credentials, per docs/requirements.md's Technical Constraints.
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'no-reply@isber-solutions.local'
+DEFAULT_FROM_EMAIL = 'no-reply@isben-solutions.local'

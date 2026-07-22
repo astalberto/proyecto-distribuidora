@@ -1,14 +1,24 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Crear Tienda{% endblock %}
 {% block content %}
-<p><a href="{% url 'index_catalog' %}">← Volver al Catálogo</a></p>
+<p><a href="{% url 'index_accounts' %}">← Volver a Usuarios</a></p>
 <h2>Crear Tienda</h2>
 <form method="post">
   {% csrf_token %}
   {{ formulario.as_p }}
+  <p><strong>Ubicación</strong> — busca la dirección o haz clic en el mapa para colocar el marcador</p>
+  <div id="location-picker-map" style="height:400px; border:1px solid #ccc; border-radius:4px; margin-bottom:1rem;"></div>
   <p>
     <input type="submit" value="Guardar">
-    <a href="{% url 'index_catalog' %}">Cancelar</a>
+    <a href="{% url 'index_accounts' %}">Cancelar</a>
   </p>
 </form>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+<script>window.PICKER_CFG = { lat: null, lng: null };</script>
+<script src="{% static 'js/location_picker.js' %}"></script>
 {% endblock %}

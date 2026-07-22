@@ -13,9 +13,18 @@ class MultipleFileInput(forms.ClearableFileInput):
 class StoreForm(forms.ModelForm):
     class Meta:
         model = Store
-        # distributor is set server-side from request.user.distributor, not
-        # client-supplied — see catalog/views.py.
-        fields = ['name', 'address', 'phone_number', 'owner', 'vendor']
+        fields = ['name', 'address', 'phone_number', 'owner', 'vendor', 'latitude', 'longitude']
+        widgets = {
+            'latitude': forms.HiddenInput(),
+            'longitude': forms.HiddenInput(),
+        }
+        labels = {
+            'name': 'Nombre',
+            'address': 'Dirección',
+            'phone_number': 'Teléfono',
+            'owner': 'Propietario',
+            'vendor': 'Vendedor',
+        }
 
     def __init__(self, *args, distributor=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -33,15 +42,15 @@ class StoreForm(forms.ModelForm):
 class CategoryForm(forms.ModelForm):
     class Meta:
         model = Category
-        # distributor is set server-side — see catalog/views.py.
         fields = ['name']
+        labels = {'name': 'Nombre'}
 
 
 class BrandForm(forms.ModelForm):
     class Meta:
         model = Brand
-        # distributor is set server-side — see catalog/views.py.
         fields = ['name']
+        labels = {'name': 'Nombre'}
 
 
 class ProductForm(forms.ModelForm):
@@ -57,13 +66,23 @@ class ProductForm(forms.ModelForm):
 
     class Meta:
         model = Product
-        # distributor is set server-side from request.user.distributor, not
-        # client-supplied — see catalog/views.py.
         fields = [
             'name', 'sku', 'barcode', 'category', 'brand',
             'description', 'unit_price', 'unit_of_measure',
             'status', 'low_stock_threshold',
         ]
+        labels = {
+            'name': 'Nombre',
+            'sku': 'SKU',
+            'barcode': 'Código de barras',
+            'category': 'Categoría',
+            'brand': 'Marca',
+            'description': 'Descripción',
+            'unit_price': 'Precio unitario',
+            'unit_of_measure': 'Unidad de medida',
+            'status': 'Estado',
+            'low_stock_threshold': 'Stock mínimo de alerta',
+        }
 
     def __init__(self, *args, distributor=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -79,6 +98,12 @@ class DiscountForm(forms.ModelForm):
         widgets = {
             'start_date': forms.DateInput(attrs={'type': 'date'}),
             'end_date': forms.DateInput(attrs={'type': 'date'}),
+        }
+        labels = {
+            'discount_type': 'Tipo de descuento',
+            'discount_value': 'Valor del descuento',
+            'start_date': 'Fecha de inicio',
+            'end_date': 'Fecha de fin',
         }
 
 

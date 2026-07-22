@@ -3,7 +3,7 @@
 **Last updated:** 2026-07-19
 **Source:** brand sheet provided directly (colors + typeface names); logo files in `proyectoDistribuidora/static/media/`.
 
-> **Naming discrepancy — unresolved.** The brand assets and this document say **"ISBEN SOLUTION"**. Every other project document (`docs/requirements.md`, `CLAUDE.md`, `README.md`, in-app headings, code comments) says **"ISBER Solutions"** (with an R, plural). Nobody has confirmed which is the typo. Until someone does, treat both spellings as referring to the same client — don't silently "correct" one to match the other.
+> **Naming discrepancy — unresolved.** The brand assets and this document say **"ISBEN SOLUTION"**. Every other project document (`docs/requirements.md`, `CLAUDE.md`, `README.md`, in-app headings, code comments) says **"ISBEN Solutions"** (with an R, plural). Nobody has confirmed which is the typo. Until someone does, treat both spellings as referring to the same client — don't silently "correct" one to match the other.
 
 ---
 
@@ -55,7 +55,7 @@ Neither typeface is applied yet — `styles.css` currently uses `"Segoe UI", Ari
 | `logos_1 - copia.jpg.jpeg` | JPEG export of `logos_1.png` | White | Likely a duplicate left over from export — candidate for cleanup |
 | `logos_ISBEN.jpg.jpeg` | JPEG export (unreviewed) | — | Likely a duplicate — candidate for cleanup |
 
-**None of these are referenced from any template yet.** `templates/base.html`'s header is still plain text (`<h1>ISBER Solutions — Distribuidora</h1>`), no `<img>`. Wiring in a logo is listed as a future-task item in `docs/ux-navigation-wireframes.md`.
+**None of these are referenced from any template yet.** `templates/base.html`'s header is still plain text (`<h1>ISBEN Solutions — Distribuidora</h1>`), no `<img>`. Wiring in a logo is listed as a future-task item in `docs/ux-navigation-wireframes.md`.
 
 ### Icon motif
 
@@ -65,7 +65,7 @@ The isotype is a leopard/jaguar head in profile, its fur rendered as a scattered
 
 ## Open questions for whoever owns the brand sheet
 
-1. Is the client name "ISBEN" or "ISBER"? The client name is ISBEN
+1. Is the client name "ISBEN" or "ISBEN"? The client name is ISBEN
 2. Confirm the Futura/Verdana role split (display vs. body) — It could be use in either way, its not specified
 3. `iso_1.png` vs `iso_2.png` — are these meant to be identical, or is one a stale export?
 4. Are the two `.jpg.jpeg` files intentional (e.g., a specific export a stakeholder requested) or leftover clutter?
