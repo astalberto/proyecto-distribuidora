@@ -1,6 +1,7 @@
 import secrets
 from datetime import timedelta
 
+from django.contrib import messages
 from django.contrib.auth import login as auth_login
 from django.core.mail import send_mail
 from django.db import transaction
@@ -10,12 +11,15 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
 from django.utils import timezone
 
+from audit.models import AuditLog
 from catalog.models import ProductStatus, StockLevel, Store
 from orders.models import Order, OrderStatus
 from .decorators import role_required, superuser_required
-from .models import Distributor, Notification, PasswordResetToken, Role, User
+from .models import Distributor, DistributorInvitation, Notification, PasswordResetToken, Role, User
 from .forms import (
     DistributorForm,
+    DistributorInvitationForm,
+    DistributorJoinForm,
     DistributorOnboardingForm,
     PasswordResetRequestForm,
     SetNewPasswordForm,
@@ -55,10 +59,166 @@ def crear_distribuidor(request):
                     role=Role.DISTRIBUTOR,
                     distributor=distribuidor,
                 )
-            return redirect(index)
+            # Eng-review Finding A1: redirect(index) used to send the
+            # superuser into a 403 wall — index is @role_required
+            # ('DISTRIBUTOR') and a superuser has role=''. Send them
+            # somewhere they can actually reach instead.
+            return redirect('invitaciones')
     else:
         formulario = DistributorOnboardingForm()
     return render(request, 'accounts/crear_distribuidor.html', {'formulario': formulario})
+
+
+# --- Distributor self-service invitations (ISBEN roadmap item 3) ---
+
+@superuser_required
+def emitir_invitacion(request):
+    """Issues a single-use DistributorInvitation. Superuser-only: Distributor
+    is the top of the tenant hierarchy, so there's no higher-level tenant to
+    scope this action to — see docs/TODOS.md Tier 6 item 3."""
+    if request.method == 'POST':
+        formulario = DistributorInvitationForm(request.POST)
+        if formulario.is_valid():
+            invitacion = DistributorInvitation.objects.create(
+                token=secrets.token_urlsafe(32),
+                target_email=formulario.cleaned_data['target_email'],
+                expires_at=timezone.now() + timedelta(days=7),
+                created_by=request.user,
+            )
+            AuditLog.objects.create(
+                user=request.user,
+                action='invitation_issued',
+                entity_type='DistributorInvitation',
+                entity_id=str(invitacion.id),
+                details={'target_email': invitacion.target_email},
+            )
+            join_url = request.build_absolute_uri(
+                reverse('registrar_distribuidor', args=[invitacion.token])
+            )
+            if invitacion.target_email:
+                try:
+                    send_mail(
+                        subject='Invitación — ISBER Solutions',
+                        message=(
+                            'Has sido invitado a registrar tu distribuidora en '
+                            f'ISBER Solutions. Usa este enlace (válido por 7 días): {join_url}'
+                        ),
+                        from_email=None,
+                        recipient_list=[invitacion.target_email],
+                    )
+                    messages.success(request, 'Invitación creada y enviada por correo.')
+                except Exception:
+                    messages.warning(
+                        request,
+                        'Invitación creada, pero el correo no pudo enviarse — '
+                        f'comparte este enlace manualmente: {join_url}',
+                    )
+            else:
+                messages.success(request, f'Invitación creada — comparte este enlace: {join_url}')
+            return redirect('invitaciones')
+    else:
+        formulario = DistributorInvitationForm()
+    return render(request, 'accounts/emitir_invitacion.html', {'formulario': formulario})
+
+
+@superuser_required
+def invitaciones(request):
+    lista = DistributorInvitation.objects.select_related('created_by').order_by('-created_at')
+    return render(request, 'accounts/invitaciones.html', {'invitaciones': lista})
+
+
+@superuser_required
+def revocar_invitacion(request, id):
+    invitacion = get_object_or_404(DistributorInvitation, id=id)
+    if request.method == 'POST':
+        if invitacion.revoked_at is None:
+            invitacion.revoked_at = timezone.now()
+            invitacion.save(update_fields=['revoked_at'])
+        AuditLog.objects.create(
+            user=request.user,
+            action='invitation_revoked',
+            entity_type='DistributorInvitation',
+            entity_id=str(invitacion.id),
+        )
+    return redirect('invitaciones')
+
+
+# --- Distributor self-registration — unauthenticated, reached via a
+# superuser-issued invitation link (no public distributor picker) ---
+
+def registrar_distribuidor(request, token):
+    invitacion = get_object_or_404(DistributorInvitation, token=token)
+
+    # Optimistic pre-checks for a friendly GET response — the authoritative
+    # check happens again after acquiring the lock, right before creating
+    # anything (see the atomic block below).
+    if invitacion.revoked_at is not None:
+        return render(request, 'accounts/invitacion_invalida.html', {
+            'motivo': 'esta invitación fue revocada',
+        })
+    if invitacion.used_at is not None:
+        return render(request, 'accounts/invitacion_invalida.html', {
+            'motivo': 'este enlace ya fue utilizado',
+        })
+    if invitacion.is_expired():
+        return render(request, 'accounts/invitacion_invalida.html', {
+            'motivo': 'el enlace ha expirado, solicita uno nuevo',
+        })
+
+    if request.method == 'POST':
+        formulario = DistributorJoinForm(request.POST)
+        if formulario.is_valid():
+            if (
+                invitacion.target_email
+                and formulario.cleaned_data['admin_email'].lower() != invitacion.target_email.lower()
+            ):
+                formulario.add_error('admin_email', 'El correo no coincide con la invitación.')
+            else:
+                # Eng-review Finding B1 (CRITICAL): lock acquisition, the
+                # re-check, entity creation, and the used_at write all live
+                # in ONE atomic block — never split into a separate
+                # transaction, or two concurrent redemptions of the same
+                # token could both create a Distributor before either marks
+                # it used. Mirrors orders.views.aceptar_pedido's single-
+                # atomic-block lock pattern exactly. Copies
+                # DistributorOnboardingForm's field-population logic
+                # directly rather than calling crear_distribuidor (which
+                # opens its own independent transaction.atomic()).
+                with transaction.atomic():
+                    bloqueada = DistributorInvitation.objects.select_for_update().get(id=invitacion.id)
+                    if not bloqueada.is_usable():
+                        # Lost the race — another request already redeemed
+                        # or revoked it first.
+                        return render(request, 'accounts/invitacion_invalida.html', {
+                            'motivo': 'este enlace ya no está disponible',
+                        })
+                    distribuidor = Distributor.objects.create(
+                        name=formulario.cleaned_data['distributor_name'],
+                        email=formulario.cleaned_data['distributor_email'],
+                    )
+                    admin = User.objects.create_user(
+                        email=formulario.cleaned_data['admin_email'],
+                        password=formulario.cleaned_data['admin_password1'],
+                        role=Role.DISTRIBUTOR,
+                        distributor=distribuidor,
+                    )
+                    bloqueada.used_at = timezone.now()
+                    bloqueada.save(update_fields=['used_at'])
+                    AuditLog.objects.create(
+                        user=admin,
+                        action='invitation_redeemed',
+                        entity_type='DistributorInvitation',
+                        entity_id=str(bloqueada.id),
+                        details={'distributor_id': distribuidor.id},
+                    )
+                auth_login(request, admin)
+                return redirect('distributor_dashboard')
+    else:
+        formulario = DistributorJoinForm()
+    return render(request, 'accounts/registrar_distribuidor.html', {
+        'formulario': formulario,
+        'invitacion': invitacion,
+    })
 
 
 @superuser_required

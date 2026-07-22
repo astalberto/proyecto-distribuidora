@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import Distributor, User, PasswordResetToken, Notification
+from .models import Distributor, DistributorInvitation, User, PasswordResetToken, Notification
 
 
 class DistribuidorAdmin(admin.ModelAdmin):
@@ -38,3 +38,10 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ('user', 'order', 'message', 'is_read', 'created_at')
     list_filter = ('is_read',)
     search_fields = ('user__email', 'message')
+
+
+@admin.register(DistributorInvitation)
+class DistributorInvitationAdmin(admin.ModelAdmin):
+    list_display = ('target_email', 'created_by', 'created_at', 'expires_at', 'used_at', 'revoked_at')
+    search_fields = ('target_email', 'created_by__email')
+    list_filter = ('used_at', 'revoked_at')

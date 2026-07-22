@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Emitir invitación{% endblock %}
+{% block content %}
+<p><a href="{% url 'crear_distribuidor' %}">← Volver</a> · <a href="{% url 'invitaciones' %}">Ver invitaciones →</a></p>
+<h2>Emitir invitación a una distribuidora</h2>
+<p>La distribuidora recibirá un enlace de un solo uso, válido por 7 días, para registrarse sola.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Emitir invitación">
+    <a href="{% url 'invitaciones' %}">Cancelar</a>
+  </p>
+</form>
+{% endblock %}

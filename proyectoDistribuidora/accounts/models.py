@@ -92,6 +92,54 @@ class User(AbstractUser):
         return self.email
 
 
+class DistributorInvitation(models.Model):
+    """Single-use, expiring invitation token letting a prospective distributor
+    self-register (accounts/views.py:registrar_distribuidor), instead of a
+    superuser creating the Distributor+admin manually via crear_distribuidor.
+    Extends PasswordResetToken's expiry/single-use shape with created_by and
+    revoked_at — not a field-for-field mirror.
+
+    Redemption concurrency: registrar_distribuidor must open ONE
+    transaction.atomic() with select_for_update() on this row that also
+    contains the Distributor+User creation and the used_at write — never a
+    separate transaction for creation, or the lock stops protecting against
+    double-redemption. See docs/TODOS.md Tier 6 item 3 for the full reasoning
+    (mirrors orders.views.aceptar_pedido's single-atomic-block lock pattern).
+    """
+
+    token = models.CharField(max_length=255, unique=True, editable=False)
+
+    # The prospective admin user's email (matched at redemption), NOT the
+    # distributor's company email. Blank means link-only: anyone with the
+    # link can redeem it under any email.
+    target_email = models.EmailField(blank=True)
+
+    expires_at = models.DateTimeField()
+
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="issued_invitations",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() >= self.expires_at
+
+    def is_usable(self):
+        return self.used_at is None and self.revoked_at is None and not self.is_expired()
+
+    def __str__(self):
+        return f"Invitation {self.token[:8]}... ({self.target_email or 'link-only'})"
+
+
 class PasswordResetToken(models.Model):
     user = models.ForeignKey(
         User,

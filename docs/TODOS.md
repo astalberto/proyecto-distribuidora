@@ -326,6 +326,114 @@ concurrent-accept and insufficient-stock tests below being re-verified.
 (WhiteNoise, `dj-database-url`, Procfile/Gunicorn, real Cloudinary/Resend credentials).
 Revisit only if a deployment target is actually decided.
 
+## Tier 6 — ISBEN Roadmap (Sprint 8+) — sequenced 2026-07-21
+
+Scoped via `/plan-ceo-review` on 2026-07-21 on a 5-item roadmap pasted by the project owner
+(rebrand, role-based nav, distributor/sales management, super-admin dashboard, store-location
+maps). Reviewed as SELECTIVE EXPANSION mode: the five items don't share risk, effort, or
+urgency — bundling them into one plan/PR would stall the easy 80% behind the hardest 20%
+(super-admin/SaaS foundation, a genuine architecture pivot, not a feature). Split into 5
+independently-reviewed, independently-shippable plans instead.
+
+**Confirmed sequencing (project owner, 2026-07-21):** 3 → 1 → 5 → 4 → 2. Item 4 (Super
+Admin) introduces a new access tier (today "super admin" is just Django's raw
+`is_superuser` flag — not in `accounts.Role`, not in the role-based permission system at
+all) that item 2's nav redesign has a soft dependency on; building item 2 before item 4
+risks a partial redo once the super-admin tier lands. Items 3, 1, and 5 have no
+cross-dependencies and were sequenced by effort/risk (quick low-risk win first, mechanical
+work next, isolated integration third).
+
+- [x] **Item 3 — Distributor invitation links — DONE 2026-07-21.** Replaced manual
+      superuser-driven `Distributor` account creation with a self-service, single-use
+      invitation-link flow, mirroring the existing `Distributor.invite_token` /
+      `accounts/join/<token>/` pattern already shipped for STORE_OWNER self-registration
+      (Sprint 1 addendum, above). Also closes the sales-rep (VENDOR) assignment bug.
+      `/plan-ceo-review` + `/plan-eng-review` both complete: 11-section CEO review,
+      4-section eng review, 2-round adversarial spec review (quality 9/10), and TWO
+      outside-voice passes (Claude subagent, Codex not installed) that together caught and
+      fixed: a real defect (original nav placement was unreachable by superusers), a
+      strategic over-build (rate-limiting/configurable-expiry cut as prod-hardening for a
+      threat model this local-only project doesn't have — revoke initially cut alongside
+      them then restored since it guards operator mistakes, not just adversaries), a
+      critical transaction-scope ambiguity that could have silently defeated the
+      concurrency lock, an incomplete test spec that would have shipped flaky under
+      SQLite, a missing `on_delete=SET_NULL` on the new audit FK, and a pre-existing
+      unrelated bug in `crear_distribuidor`'s success redirect (superusers 403'd on it) —
+      full plan at
+      `~/.gstack/projects/astalberto-proyecto-distribuidora/ceo-plans/2026-07-21-distributor-invitations.md`.
+      **Implemented:** `DistributorInvitation` model (`accounts/models.py`, migration
+      `0006_distributorinvitation`) extending `PasswordResetToken`'s expiry/single-use
+      shape plus a minimal revoke; `emitir_invitacion`/`invitaciones`/
+      `revocar_invitacion`/`registrar_distribuidor` views (`accounts/views.py`) with a
+      single nested `transaction.atomic()` + `select_for_update()` covering token
+      validation AND entity creation together (documented SQLite caveat — no-op there,
+      real row lock only under Postgres); `AuditLog` on issue/redeem/revoke; conditional
+      auto-email (only fires when `target_email` is set) with a graceful failure
+      fallback; `crear_distribuidor`'s redirect fixed to point at the invitations list
+      instead of the 403-triggering `index`; `StoreForm` vendor/owner querysets
+      (`catalog/forms.py`) now filter by role AND distributor together. Verified via
+      `manage.py check`, `makemigrations --check` (clean), 28 new automated tests
+      (`accounts.tests` + 2 in `catalog.tests`, all 52 project tests passing) — including
+      a genuine threaded concurrency test mirroring `OrderAcceptConcurrencyTest` — and a
+      manual smoke test against the real dev DB (superuser issues → redeems → auto-login →
+      dashboard; revoke; `crear_distribuidor` redirect regression check), all green.
+      Documented as `DR-10` in `docs/requirements.md`.
+      **Known pre-existing gap surfaced, not fixed (out of scope):** the dev DB is
+      missing an `accounts_user_groups` table (same schema-drift bug flagged during
+      Tier 4.5), which blocks deleting any `User`/`Distributor` row via the ORM — hit
+      during smoke-test cleanup, so a handful of harmless `smoketest-*@test.com` /
+      `debug-*@test.com` throwaway rows were left in the dev DB rather than risk touching
+      an unrelated schema issue.
+  - [ ] Deferred from item 3's review: rate-limiting on the join endpoint + configurable
+        expiry-at-issuance — cut from item 3 itself after outside-voice review found this
+        project has no live deployment for the adversarial threat model rate-limiting
+        defends against (configurable expiry is separately low-value at v1's low volume).
+        P3 — revisit rate-limiting once a real deployment target exists; configurable
+        expiry can revisit independently if the fixed 7-day default proves too rigid.
+  - [ ] Deferred from item 3's review: shared token/expiry base class across
+        `Distributor.invite_token`, `PasswordResetToken`, `DistributorInvitation` (3-way
+        duplication once item 3 ships). P3 — regression risk on 2 existing models outweighs
+        the DRY win right now; revisit once the pattern proves itself a third time.
+  - [ ] Deferred from item 3's review: CAPTCHA on `accounts/join-distributor/<token>/`.
+        P3 — blocked on an actual deployment target existing (needs a public domain +
+        registered site keys, per the local-only constraint above).
+  - [ ] Deferred from item 3's review: backport rate-limiting to `registrar_tienda`'s
+        existing join endpoint, closing the gap the Sprint 1 addendum already flagged ("no
+        rate-limiting/CAPTCHA on the join endpoint"). P3 — now depends on the
+        rate-limiting deferral above landing first, since item 3 no longer builds a
+        mechanism to backport.
+  - [ ] Deferred from item 3's review: `confirmar_reset_password` has the same
+        TOCTOU redemption race that `DistributorInvitation`'s design specifically accounts
+        for (no `select_for_update()` on `PasswordResetToken` lookup-and-mark-used). P2 —
+        low real-world exploitability but a real gap in a security-sensitive flow, now
+        that it's been noticed.
+- [ ] **Item 1 — Rebrand ISBER → ISBEN.** Mechanical but wide: touches `templates/base.html`,
+      `templates/home.html`, `static/css/styles.css`, `docs/requirements.md`,
+      `docs/DESIGN.md`, `docs/ux-navigation-wireframes.md`, `README.md`,
+      `proyectoDistribuidora/proyectoDistribuidora/settings.py`, and
+      `PRESENTACION-1BIM/main.tex` (10 files total, confirmed via repo-wide grep
+      2026-07-21). No functional risk, no interdependency with the other 4 items — can slot
+      in anytime after item 3.
+- [ ] **Item 5 — Store/distributor location maps.** Interactive map showing store and
+      distributor physical locations. Provider TBD at review time (free-tier requirement
+      named by the project owner — likely OpenStreetMap/Leaflet, no API key or billing
+      account, vs. Google Maps' API-key-gated free tier). Fully isolated — no dependency on
+      the other 4 items.
+- [ ] **Item 4 — Super Administrator dashboard + multi-tenant SaaS foundation.** Distributor
+      management, user management, platform statistics, system monitoring, global settings,
+      for a new `is_superuser`-gated tier that today has no presence in `accounts.Role` or
+      the RBAC system. Explicitly named by the project owner as also laying groundwork for
+      evolving the app into a multi-tenant SaaS platform — the largest and least-scoped item
+      in the roadmap. **Recommendation (not yet actioned): run a dedicated `/office-hours`
+      pass on this item specifically before its `/plan-ceo-review`,** given its strategic
+      weight (billing/tenant-provisioning/impersonation questions aren't scoped yet).
+- [ ] **Item 2 — Role-based navigation/UX redesign.** Replace the single shared `<nav>` in
+      `templates/base.html:13-27` (currently gated only by one `user.role == 'DISTRIBUTOR'`
+      check; every other authenticated role sees the identical flat link list) with a
+      personalized per-role menu/dashboard, reducing unnecessary page transitions. Deliberately
+      sequenced last so it can account for whatever role/dashboard structure item 4
+      introduces, rather than needing rework afterward.
+
 ## Cross-cutting / housekeeping
 
 - [x] Tenant/role-scope the DRF catalog API (`catalog/api_views.py`) — done as part of

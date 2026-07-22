@@ -7,7 +7,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from accounts.models import Distributor, Role, User
-from .forms import ProductForm
+from .forms import ProductForm, StoreForm
 from .models import (
     Brand,
     Category,
@@ -159,6 +159,45 @@ class ProductFormTenantScopingTest(TestCase):
         formulario = ProductForm(distributor=d1)
         self.assertIn(cat1, formulario.fields['category'].queryset)
         self.assertEqual(formulario.fields['category'].queryset.count(), 1)
+
+
+class StoreFormRoleFilterTest(TestCase):
+    """ISBEN roadmap item 3: StoreForm's vendor/owner dropdowns must filter
+    by BOTH role AND distributor together — composing with, not replacing,
+    the existing tenant scope (Eng-Review Finding B7 / Cross-Model Tension
+    Finding 7)."""
+
+    def test_vendor_queryset_excludes_non_vendor_and_cross_tenant(self):
+        d1 = make_distributor('D1')
+        d2 = make_distributor('D2')
+        vendedor = User.objects.create_user(email='v@test.com', password='x', role=Role.VENDOR, distributor=d1)
+        repartidor = User.objects.create_user(email='r@test.com', password='x', role=Role.DELIVERY, distributor=d1)
+        vendedor_otro_tenant = User.objects.create_user(
+            email='v2@test.com', password='x', role=Role.VENDOR, distributor=d2
+        )
+
+        formulario = StoreForm(distributor=d1)
+        vendor_qs = formulario.fields['vendor'].queryset
+        self.assertIn(vendedor, vendor_qs)
+        self.assertNotIn(repartidor, vendor_qs)
+        self.assertNotIn(vendedor_otro_tenant, vendor_qs)
+
+    def test_owner_queryset_excludes_non_store_owner_and_cross_tenant(self):
+        d1 = make_distributor('D1')
+        d2 = make_distributor('D2')
+        propietario = User.objects.create_user(
+            email='o@test.com', password='x', role=Role.STORE_OWNER, distributor=d1
+        )
+        vendedor = User.objects.create_user(email='v@test.com', password='x', role=Role.VENDOR, distributor=d1)
+        propietario_otro_tenant = User.objects.create_user(
+            email='o2@test.com', password='x', role=Role.STORE_OWNER, distributor=d2
+        )
+
+        formulario = StoreForm(distributor=d1)
+        owner_qs = formulario.fields['owner'].queryset
+        self.assertIn(propietario, owner_qs)
+        self.assertNotIn(vendedor, owner_qs)
+        self.assertNotIn(propietario_otro_tenant, owner_qs)
 
 
 class CategoryTenantIsolationViewTest(TestCase):

@@ -320,6 +320,21 @@ Resolved before prototype design. Each decision closes a gap identified in the B
 
 ---
 
+### DR-10 — Distributor Self-Service Invitations
+
+**Gap:** DR-08 fixed the two-step distributor-onboarding flow into one atomic step, but it was still exclusively superuser-driven — a new `Distributor` tenant could only be created by a superuser using `crear_distribuidor`, one at a time. Part of the ISBEN roadmap's item 3 ("distributor invitation links") asked for the same self-service pattern DR-08 already gave store owners, extended one level up.
+
+**Decision:**
+- **`DistributorInvitation`** (`accounts/models.py`) is a single-use, expiring token — `token` (matches `PasswordResetToken.token`'s shape, not `Distributor.invite_token`'s, since a *new* `Distributor` doesn't exist yet at invite time to hang a token off of), `target_email` (optional — the prospective admin's login email, not the distributor's company email; blank means link-only), `expires_at` (fixed at 7 days from issuance), `used_at`, `revoked_at`, and `created_by` (`on_delete=SET_NULL`, matching `AuditLog.user`'s convention).
+- **Issuance stays superuser-gated** (`emitir_invitacion`), same rationale as DR-08's distributor onboarding — `Distributor` is the top of the tenant hierarchy, so there's no higher-level tenant to scope this action to. If `target_email` is set, the link is emailed automatically; if the send fails, or no `target_email` was given, the superuser sees the raw link in the UI to share manually. The invitations list (`invitaciones`) is both the audit view (pending/expired/used/revoked) and that manual-link fallback, and superusers reach it via a cross-link on `crear_distribuidor.html` (the one existing superuser-reachable page — `accounts/index.html` is `@role_required('DISTRIBUTOR')` and unreachable by a superuser, whose `role` field is blank).
+- **Redemption** (`registrar_distribuidor`, unauthenticated, reached via the invitation link) reuses `DistributorOnboardingForm`'s field-population logic directly to create the `Distributor` and its first `DISTRIBUTOR` user — but nested inside the SAME `transaction.atomic()` + `select_for_update()` block that locks the `DistributorInvitation` row and writes `used_at`, mirroring `aceptar_pedido`'s single-atomic-block lock pattern (Tier 2/4.5). Splitting entity creation into a second transaction (e.g. by calling `crear_distribuidor` itself, which opens its own independent atomic block) would silently defeat the lock. Expired/used/revoked tokens each render a distinct message, mirroring `confirmar_reset_password`'s `motivo` pattern. A `target_email` set on the invitation must match the redeeming admin's email case-insensitively.
+- **Revoke** (one action on the invitations list) lets a superuser invalidate a pending invitation — a typo'd `target_email` or a changed mind doesn't have to sit until the 7-day expiry.
+- `AuditLog` entries are written on issue, redeem, and revoke — actor is the issuing/revoking superuser on issue/revoke, and the newly-created user on redeem (matching this codebase's "actor of this specific transition" convention, e.g. the vendor who accepts an order rather than the store owner who placed it).
+
+**Not done in this pass:** rate-limiting on `registrar_distribuidor` and a superuser-configurable expiry window at issuance — both would defend against a public-internet threat model or a scale this project, being local-only with no deployment target, doesn't have yet (same posture DR-08 already took on `registrar_tienda`'s equivalent gap). CAPTCHA is infeasible without a real deployment (it needs a registered public domain). A shared token/expiry base class across `Distributor.invite_token`, `PasswordResetToken`, and `DistributorInvitation` — now duplicated three ways — is deferred until the pattern proves itself a fourth time.
+
+---
+
 ## System Architecture
 
 ### Logical Architecture

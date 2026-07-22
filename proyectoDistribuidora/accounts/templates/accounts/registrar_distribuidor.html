@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Registrar mi distribuidora{% endblock %}
+{% block content %}
+<h2>Registrar mi distribuidora</h2>
+<p>Completa tus datos para crear tu distribuidora y tu cuenta de administrador.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ formulario.as_p }}
+  <p>
+    <input type="submit" value="Crear mi distribuidora">
+  </p>
+</form>
+{% endblock %}

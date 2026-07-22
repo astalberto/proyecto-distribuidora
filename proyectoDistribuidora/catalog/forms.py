@@ -2,7 +2,7 @@ import csv
 import io
 
 from django import forms
-from accounts.models import User
+from accounts.models import Role, User
 from .models import Brand, Category, Discount, Product, Store
 
 
@@ -20,8 +20,14 @@ class StoreForm(forms.ModelForm):
     def __init__(self, *args, distributor=None, **kwargs):
         super().__init__(*args, **kwargs)
         if distributor is not None:
-            self.fields['owner'].queryset = User.objects.filter(distributor=distributor)
-            self.fields['vendor'].queryset = User.objects.filter(distributor=distributor)
+            # Both conditions together — filtering by role alone without
+            # distributor= would leak cross-tenant users into the dropdown.
+            self.fields['owner'].queryset = User.objects.filter(
+                distributor=distributor, role=Role.STORE_OWNER
+            )
+            self.fields['vendor'].queryset = User.objects.filter(
+                distributor=distributor, role=Role.VENDOR
+            )
 
 
 class CategoryForm(forms.ModelForm):
