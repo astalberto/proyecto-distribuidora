@@ -6,10 +6,15 @@
     <meta name="viewport" content="width=device-width">
     <title>{% block title %}ISBEN Solutions{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    {% block extra_head %}{% endblock %}
   </head>
   <body>
     <header>
-      <h1>ISBEN Solutions — Distribuidora</h1>
+      <div class="header-row">
+      <a href="{% url 'home' %}" class="brand">
+        <img src="{% static 'media/iso_1.png' %}" alt="" class="brand-mark" width="26" height="26">
+        <span class="brand-word">ISBEN <em>Solutions</em></span>
+      </a>
       <nav>
         <ul>
           <li><a href="{% url 'home' %}">Inicio</a></li>
@@ -51,9 +56,10 @@
           <a href="{% url 'login' %}">Iniciar sesión</a>
         {% endif %}
       </div>
+      </div>
     </header>
 
-    <section>
+    <section class="page-section {% block content_class %}page-section--padded{% endblock %}">
       {% if messages %}
         {% for message in messages %}
           <p class="{{ message.tags }}">{{ message }}</p>

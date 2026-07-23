@@ -132,6 +132,13 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+### Tailwind standalone CLI ###
+# Downloaded from https://github.com/tailwindlabs/tailwindcss/releases —
+# not committed (large binary); the compiled home-tailwind.css output IS
+# committed. See the comment atop proyectoDistribuidora/static/css/home-tailwind-src.css
+# for the rebuild command.
+proyectoDistribuidora/static/tailwindcli/*.exe
+
 ### venv ###
 # Virtualenv
 [Bb]in
@@ -145,3 +152,4 @@ pip-selfcheck.json
 .claude
 
 products
+.gstack/

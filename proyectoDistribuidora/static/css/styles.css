@@ -1,11 +1,13 @@
 /* ISBEN Solutions — Distribuidora: estilos base */
 
 :root {
-  --color-primary: #034275;
-  --color-primary-light: #258ead;
-  --color-bg: #fefefd;
-  --color-border: #dde3e8;
-  --color-text: #1f2933;
+  --color-primary: #FB4318;
+  --color-primary-light: #FFC22F;
+  --color-bg: #FFF8F0;
+  --color-surface: #FFFFFF;
+  --color-border: #E4D8CC;
+  --color-text: #231A16;
+  --color-muted: #6B5D55;
   --color-error: #b3261e;
 }
 
@@ -21,43 +23,93 @@ body {
   line-height: 1.5;
 }
 
-header {
-  background: var(--color-primary);
-  color: #fff;
-  padding: 16px 32px;
+a {
+  color: var(--color-text);
 }
 
-header h1 {
-  margin: 0 0 8px 0;
-  font-size: 1.4rem;
+a:hover {
+  color: var(--color-primary);
+}
+
+header {
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 10px 32px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.brand:hover {
+  color: var(--color-text);
+}
+
+.brand-mark {
+  display: block;
+  height: 24px;
+  width: auto;
+}
+
+.brand-word {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.brand-word em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--color-primary);
+}
+
+header nav {
+  flex: 1 1 auto;
 }
 
 header nav ul {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 4px 16px;
   margin: 0;
   padding: 0;
+  font-size: 0.9rem;
 }
 
 header nav a {
-  color: #fff;
+  color: var(--color-text);
   text-decoration: none;
   font-weight: 600;
 }
 
 header nav a:hover {
   text-decoration: underline;
+  text-decoration-color: var(--color-primary);
+  text-decoration-thickness: 2px;
 }
 
 .session-bar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
-  font-size: 0.9rem;
-  margin-top: 8px;
+  font-size: 0.85rem;
+  margin: 0;
+  color: var(--color-text);
+  flex-shrink: 0;
 }
 
 .session-bar form {
@@ -67,16 +119,24 @@ header nav a:hover {
 .session-bar button.linklike {
   background: none;
   border: none;
-  color: #fff;
+  color: var(--color-text);
   text-decoration: underline;
+  text-decoration-color: var(--color-primary);
   cursor: pointer;
   font: inherit;
   padding: 0;
 }
 
-section {
+.page-section {
   width: 100%;
+}
+
+.page-section--padded {
   padding: 24px 32px;
+}
+
+.page-section--flush {
+  padding: 0;
 }
 
 table {
@@ -92,7 +152,7 @@ th, td {
 }
 
 tr:hover {
-  background-color: rgba(37, 142, 173, 0.12);
+  background-color: rgba(255, 194, 47, 0.15);
 }
 
 input[type=text], input[type=number], input[type=email],
@@ -117,7 +177,8 @@ label {
 
 button, input[type=submit] {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text);
+  font-weight: 600;
   border: none;
   padding: 10px 18px;
   border-radius: 4px;
@@ -136,6 +197,7 @@ button:hover, input[type=submit]:hover {
 
 footer {
   padding: 16px 32px;
-  color: #6b7785;
+  color: var(--color-muted);
   font-size: 0.85rem;
+  border-top: 1px solid var(--color-border);
 }
