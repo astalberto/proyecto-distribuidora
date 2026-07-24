@@ -3,10 +3,12 @@
 {% block content %}
 <p><a href="{% url 'home' %}">← Volver</a></p>
 <h2>Invitaciones a distribuidoras</h2>
-<p><a href="{% url 'emitir_invitacion' %}">Emitir una nueva invitación</a></p>
+<div class="page-actions">
+  <a class="btn" href="{% url 'emitir_invitacion' %}">+ Emitir una nueva invitación</a>
+</div>
 
 {% if invitaciones %}
-<table>
+<table class="datatable">
   <thead>
     <tr>
       <th>Correo</th>

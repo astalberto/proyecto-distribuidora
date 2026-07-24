@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <h2>Dashboard — {{ distribuidor.name }}</h2>
@@ -39,7 +39,7 @@
 </form>
 
 <h3>Resumen</h3>
-<table border="1">
+<table>
   <tbody>
     <tr><th>Total de pedidos</th><td>{{ metricas.total }}</td></tr>
     <tr><th>Cumplidos (confirmados)</th><td>{{ metricas.fulfilled }}</td></tr>
@@ -49,7 +49,7 @@
 </table>
 
 <h3>Pedidos por estado</h3>
-<table border="1">
+<table class="datatable">
   <thead>
     <tr>
       <th>Estado</th>
@@ -69,7 +69,7 @@
 </table>
 
 <h3>Pedidos ({{ pedidos_recientes|length }} de {{ metricas.total }})</h3>
-<table border="1">
+<table class="datatable">
   <thead>
     <tr>
       <th>#</th>
@@ -95,7 +95,7 @@
 </table>
 
 <h3>Inventario por almacén</h3>
-<table border="1">
+<table class="datatable">
   <thead>
     <tr>
       <th>Producto</th>

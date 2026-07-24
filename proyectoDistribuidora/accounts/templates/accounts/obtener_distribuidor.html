@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Distribuidor — {{ distribuidor.name }}{% endblock %}
 {% block content %}
 <p><a href="{% url 'home' %}">← Volver</a></p>
@@ -9,7 +9,7 @@
 
 <h3>Usuarios de este distribuidor</h3>
 <p>Gestión de usuarios individuales — usa /admin/ (el distribuidor mismo la hace desde su propio panel en "Usuarios").</p>
-<table border="1">
+<table class="datatable">
   <thead>
     <tr>
       <th>Email</th>

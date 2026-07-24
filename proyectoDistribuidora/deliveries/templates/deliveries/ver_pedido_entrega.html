@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Pedido #{{ order.id }} — Entrega{% endblock %}
 {% block content %}
 <p><a href="{% url 'index_deliveries' %}">← Cola de entregas</a></p>
@@ -32,29 +32,29 @@
 </div>
 
 <h3>Productos</h3>
-<table border="1" style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;">
+<table class="datatable">
   <thead>
     <tr>
-      <th style="padding:0.4rem 0.6rem;text-align:left;">Producto</th>
-      <th style="padding:0.4rem 0.6rem;text-align:right;">Cantidad</th>
-      <th style="padding:0.4rem 0.6rem;text-align:right;">Precio unit.</th>
-      <th style="padding:0.4rem 0.6rem;text-align:right;">Subtotal</th>
+      <th>Producto</th>
+      <th style="text-align:right;">Cantidad</th>
+      <th style="text-align:right;">Precio unit.</th>
+      <th style="text-align:right;">Subtotal</th>
     </tr>
   </thead>
   <tbody>
     {% for item in order.items.all %}
     <tr>
-      <td style="padding:0.4rem 0.6rem;">{{ item.product.name }}</td>
-      <td style="padding:0.4rem 0.6rem;text-align:right;">{{ item.quantity }}</td>
-      <td style="padding:0.4rem 0.6rem;text-align:right;">${{ item.unit_price_at_time }}</td>
-      <td style="padding:0.4rem 0.6rem;text-align:right;">${{ item.unit_price_at_time|floatformat:2 }}</td>
+      <td>{{ item.product.name }}</td>
+      <td style="text-align:right;">{{ item.quantity }}</td>
+      <td style="text-align:right;">${{ item.unit_price_at_time }}</td>
+      <td style="text-align:right;">${{ item.unit_price_at_time|floatformat:2 }}</td>
     </tr>
     {% endfor %}
   </tbody>
   <tfoot>
     <tr>
-      <td colspan="3" style="padding:0.4rem 0.6rem;text-align:right;"><strong>Total</strong></td>
-      <td style="padding:0.4rem 0.6rem;text-align:right;"><strong>${{ order_total }}</strong></td>
+      <td colspan="3" style="text-align:right;"><strong>Total</strong></td>
+      <td style="text-align:right;"><strong>${{ order_total }}</strong></td>
     </tr>
   </tfoot>
 </table>

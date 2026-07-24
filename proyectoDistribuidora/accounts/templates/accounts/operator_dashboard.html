@@ -16,7 +16,7 @@
 <section>
   <h3>Distribuidores</h3>
   {% if distribuidores %}
-  <table>
+  <table class="datatable">
     <thead>
       <tr>
         <th>Nombre</th>
@@ -43,12 +43,10 @@
   {% else %}
   <p>No hay distribuidores registrados.</p>
   {% endif %}
-  <p>
-    <a href="{% url 'crear_distribuidor' %}">+ Crear distribuidor</a>
-    &nbsp;·&nbsp;
-    <a href="{% url 'emitir_invitacion' %}">Emitir invitación</a>
-    &nbsp;·&nbsp;
-    <a href="{% url 'invitaciones' %}">Ver invitaciones</a>
-  </p>
+  <div class="page-actions">
+    <a class="btn" href="{% url 'crear_distribuidor' %}">+ Crear distribuidor</a>
+    <a class="btn btn-secondary" href="{% url 'emitir_invitacion' %}">Emitir invitación</a>
+    <a class="btn btn-secondary" href="{% url 'invitaciones' %}">Ver invitaciones</a>
+  </div>
 </section>
 {% endblock %}

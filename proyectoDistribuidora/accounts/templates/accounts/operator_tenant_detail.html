@@ -30,7 +30,7 @@
 <section>
   <h3>Usuarios ({{ usuarios|length }})</h3>
   {% if usuarios %}
-  <table>
+  <table class="datatable">
     <thead>
       <tr>
         <th>Correo</th>
@@ -54,7 +54,7 @@
 <section>
   <h3>Últimas 20 entradas de auditoría</h3>
   {% if audit_entries %}
-  <table>
+  <table class="datatable">
     <thead>
       <tr>
         <th>Acción</th>

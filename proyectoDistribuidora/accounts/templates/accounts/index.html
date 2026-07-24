@@ -1,13 +1,13 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Usuarios{% endblock %}
 {% block content %}
 <h2>Usuarios — {{ distribuidor.name }}</h2>
-<p>
-  <a href="{% url 'crear_usuario' role='DISTRIBUTOR' %}">+ Admin Distribuidor</a> |
-  <a href="{% url 'crear_usuario' role='VENDOR' %}">+ Vendedor</a> |
-  <a href="{% url 'crear_usuario' role='STORE_OWNER' %}">+ Dueño de Tienda</a> |
-  <a href="{% url 'crear_usuario' role='DELIVERY' %}">+ Repartidor</a>
-</p>
+<div class="page-actions">
+  <a class="btn" href="{% url 'crear_usuario' role='DISTRIBUTOR' %}">+ Admin Distribuidor</a>
+  <a class="btn" href="{% url 'crear_usuario' role='VENDOR' %}">+ Vendedor</a>
+  <a class="btn" href="{% url 'crear_usuario' role='STORE_OWNER' %}">+ Dueño de Tienda</a>
+  <a class="btn" href="{% url 'crear_usuario' role='DELIVERY' %}">+ Repartidor</a>
+</div>
 
 <div class="invite-box">
   <h3>Enlace de registro para dueños de tienda</h3>
@@ -19,7 +19,7 @@
   </form>
 </div>
 
-<table border="1">
+<table class="datatable">
   <thead>
     <tr>
       <th>Email</th>
@@ -45,13 +45,12 @@
 
 <hr>
 <h3>Tiendas</h3>
-<p>
-  <a href="{% url 'crear_tienda' %}">+ Nueva Tienda</a>
-  &nbsp;·&nbsp;
-  <a href="{% url 'mapa_tiendas' %}">Ver mapa</a>
-</p>
+<div class="page-actions">
+  <a class="btn" href="{% url 'crear_tienda' %}">+ Nueva Tienda</a>
+  <a class="btn btn-secondary" href="{% url 'mapa_tiendas' %}">Ver mapa</a>
+</div>
 
-<table border="1">
+<table class="datatable">
   <thead>
     <tr>
       <th>Nombre</th>

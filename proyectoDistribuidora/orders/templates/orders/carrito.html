@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Carrito — {{ store.name }}{% endblock %}
 {% block content %}
 <h2>Pedido para {{ store.name }}</h2>
@@ -7,7 +7,7 @@
 {% if display_items %}
 <form method="post">
   {% csrf_token %}
-  <table border="1">
+  <table>
     <thead>
       <tr>
         <th>Producto</th>
@@ -57,5 +57,7 @@
 </form>
 {% endif %}
 
-<p><a href="{% url 'explorar_productos' %}">+ Explorar y agregar productos</a></p>
+<div class="page-actions">
+  <a class="btn" href="{% url 'explorar_productos' %}">+ Explorar y agregar productos</a>
+</div>
 {% endblock %}

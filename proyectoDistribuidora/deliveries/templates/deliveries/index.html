@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Cola de Entregas{% endblock %}
 {% block content %}
 <h2>Cola de Entregas</h2>
@@ -105,25 +105,25 @@
 
 <h3 style="margin-bottom:0.5rem;">Historial de entregas</h3>
 {% if history %}
-<table border="1" style="width:100%;border-collapse:collapse;">
+<table class="datatable">
   <thead>
     <tr>
-      <th style="padding:0.4rem 0.6rem;text-align:left;">Pedido</th>
-      <th style="padding:0.4rem 0.6rem;text-align:left;">Tienda</th>
-      <th style="padding:0.4rem 0.6rem;text-align:left;">Repartidor</th>
-      <th style="padding:0.4rem 0.6rem;text-align:left;">Confirmado en</th>
-      {% if user.role == 'DISTRIBUTOR' %}<th style="padding:0.4rem 0.6rem;"></th>{% endif %}
+      <th>Pedido</th>
+      <th>Tienda</th>
+      <th>Repartidor</th>
+      <th>Confirmado en</th>
+      {% if user.role == 'DISTRIBUTOR' %}<th></th>{% endif %}
     </tr>
   </thead>
   <tbody>
     {% for c in history %}
     <tr>
-      <td style="padding:0.4rem 0.6rem;">#{{ c.order.id }}</td>
-      <td style="padding:0.4rem 0.6rem;">{{ c.order.store.name }}</td>
-      <td style="padding:0.4rem 0.6rem;">{{ c.delivery_user.email }}</td>
-      <td style="padding:0.4rem 0.6rem;">{{ c.confirmed_at|date:"d/m/Y H:i" }}</td>
+      <td>#{{ c.order.id }}</td>
+      <td>{{ c.order.store.name }}</td>
+      <td>{{ c.delivery_user.email }}</td>
+      <td>{{ c.confirmed_at|date:"d/m/Y H:i" }}</td>
       {% if user.role == 'DISTRIBUTOR' %}
-      <td style="padding:0.4rem 0.6rem;">
+      <td>
         <a href="{% url 'editar_confirmacion' c.id %}">Editar</a> |
         <a href="{% url 'eliminar_confirmacion' c.id %}"
            onclick="return confirm('¿Eliminar confirmación?')">Eliminar</a>

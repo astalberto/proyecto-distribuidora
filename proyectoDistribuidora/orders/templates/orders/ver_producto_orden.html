@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}{{ product.name }}{% endblock %}
 {% block content %}
 <p><a href="{% url 'explorar_productos' %}">← Volver a productos</a></p>
@@ -17,17 +17,17 @@
 </div>
 
 <table>
-  <tr><th style="text-align:left;padding:0.3rem 1rem 0.3rem 0;">Categoría</th><td>{{ product.category.name|default:"—" }}</td></tr>
-  <tr><th style="text-align:left;padding:0.3rem 1rem 0.3rem 0;">Marca</th><td>{{ product.brand.name|default:"—" }}</td></tr>
-  <tr><th style="text-align:left;padding:0.3rem 1rem 0.3rem 0;">SKU</th><td>{{ product.sku|default:"—" }}</td></tr>
-  <tr><th style="text-align:left;padding:0.3rem 1rem 0.3rem 0;">Unidad</th><td>{{ product.unit_of_measure|default:"—" }}</td></tr>
-  <tr><th style="text-align:left;padding:0.3rem 1rem 0.3rem 0;">Precio</th><td><strong>${{ price }}</strong></td></tr>
-  <tr><th style="text-align:left;padding:0.3rem 1rem 0.3rem 0;">Stock total</th><td>{{ stock }}</td></tr>
+  <tr><th style="text-align:left;">Categoría</th><td>{{ product.category.name|default:"—" }}</td></tr>
+  <tr><th style="text-align:left;">Marca</th><td>{{ product.brand.name|default:"—" }}</td></tr>
+  <tr><th style="text-align:left;">SKU</th><td>{{ product.sku|default:"—" }}</td></tr>
+  <tr><th style="text-align:left;">Unidad</th><td>{{ product.unit_of_measure|default:"—" }}</td></tr>
+  <tr><th style="text-align:left;">Precio</th><td><strong>${{ price }}</strong></td></tr>
+  <tr><th style="text-align:left;">Stock total</th><td>{{ stock }}</td></tr>
 </table>
 
 {% if stock_levels %}
 <h3>Stock por bodega</h3>
-<table border="1">
+<table class="datatable">
   <thead><tr><th>Bodega</th><th>Cantidad</th></tr></thead>
   <tbody>
     {% for sl in stock_levels %}

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Pedido #{{ pedido.id }}{% endblock %}
 {% block content %}
 <p><a href="{% url 'index_orders' %}">← Volver a Pedidos</a></p>
@@ -77,9 +77,11 @@
 
 <h3>Items del Pedido</h3>
 {% if request.user.role == 'STORE_OWNER' and pedido.status == 'PENDING' %}
-<p><a href="{% url 'crear_item_pedido' pedido.id %}">+ Agregar Item</a></p>
+<div class="page-actions">
+  <a class="btn" href="{% url 'crear_item_pedido' pedido.id %}">+ Agregar Item</a>
+</div>
 {% endif %}
-<table border="1">
+<table class="datatable">
   <thead>
     <tr>
       <th>Producto</th>

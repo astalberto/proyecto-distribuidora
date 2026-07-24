@@ -3,11 +3,10 @@
 {% block content %}
 <p><a href="{% url 'index_catalog' %}">← Catálogo</a></p>
 <h2>Productos</h2>
-<p>
-  <a href="{% url 'crear_producto' %}">+ Nuevo Producto</a>
-  &nbsp;·&nbsp;
-  <a href="{% url 'importar_productos' %}">+ Importar CSV</a>
-</p>
+<div class="page-actions">
+  <a class="btn" href="{% url 'crear_producto' %}">+ Nuevo Producto</a>
+  <a class="btn btn-secondary" href="{% url 'importar_productos' %}">+ Importar CSV</a>
+</div>
 
 <form method="get">
   <input type="text" name="q" value="{{ filtros.q }}" placeholder="Nombre, SKU o código de barras">
@@ -37,7 +36,7 @@
   <a href="{% url 'index_productos' %}">Limpiar</a>
 </form>
 
-<table>
+<table class="datatable">
   <thead>
     <tr>
       <th>SKU</th>

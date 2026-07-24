@@ -3,8 +3,10 @@
 {% block content %}
 <p><a href="{% url 'index_catalog' %}">← Catálogo</a></p>
 <h2>Marcas</h2>
-<p><a href="{% url 'crear_marca' %}">+ Nueva Marca</a></p>
-<table>
+<div class="page-actions">
+  <a class="btn" href="{% url 'crear_marca' %}">+ Nueva Marca</a>
+</div>
+<table class="datatable">
   <thead><tr><th>Nombre</th><th>Acciones</th></tr></thead>
   <tbody>
     {% for m in marcas %}

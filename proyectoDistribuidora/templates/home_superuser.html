@@ -32,11 +32,11 @@
   {% else %}
   <p>No hay distribuidores registrados aún.</p>
   {% endif %}
-  <p><a href="{% url 'crear_distribuidor' %}">+ Crear distribuidor manualmente</a>
-  &nbsp;·&nbsp;
-  <a href="{% url 'emitir_invitacion' %}">Emitir invitación de autoregistro</a>
-  &nbsp;·&nbsp;
-  <a href="{% url 'invitaciones' %}">Ver todas las invitaciones</a></p>
+  <div class="page-actions">
+    <a class="btn" href="{% url 'crear_distribuidor' %}">+ Crear distribuidor manualmente</a>
+    <a class="btn btn-secondary" href="{% url 'emitir_invitacion' %}">Emitir invitación de autoregistro</a>
+    <a class="btn btn-secondary" href="{% url 'invitaciones' %}">Ver todas las invitaciones</a>
+  </div>
 </section>
 
 <section>

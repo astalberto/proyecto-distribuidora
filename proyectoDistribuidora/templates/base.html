@@ -69,8 +69,54 @@
     </section>
 
     <footer>
-      <p>Loja — Ecuador</p>
-      <p>{% now "j F Y H:i" %}</p>
+      <div class="footer-inner">
+        <p>Loja — Ecuador</p>
+        <p>{% now "j F Y H:i" %}</p>
+      </div>
     </footer>
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+    <script>
+      $(function () {
+        $('table.datatable').each(function () {
+          var $table = $(this);
+          var colCount = $table.find('thead th').length;
+          var emptyMessage = null;
+
+          // Django templates render a single "no data yet" row with a
+          // colspan-ed <td> when a queryset is empty. DataTables' automatic
+          // column detection expects every row to have one <td> per header
+          // column, so that placeholder row crashes init unless we pull its
+          // message out and remove it before handing the table over.
+          var $rows = $table.find('tbody tr');
+          if ($rows.length === 1) {
+            var $cells = $rows.first().children('td');
+            if ($cells.length === 1 && parseInt($cells.attr('colspan'), 10) >= colCount) {
+              emptyMessage = $cells.html();
+              $rows.first().remove();
+            }
+          }
+
+          $table.DataTable({
+            language: {
+              search: "Buscar:",
+              lengthMenu: "Mostrar _MENU_ filas",
+              info: "Mostrando _START_ a _END_ de _TOTAL_",
+              infoEmpty: "Sin registros",
+              infoFiltered: "(filtrado de _MAX_ registros totales)",
+              zeroRecords: "Sin resultados coincidentes",
+              emptyTable: emptyMessage || "No hay datos disponibles.",
+              paginate: { first: "Primero", last: "Último", next: "Siguiente", previous: "Anterior" }
+            },
+            order: [],
+            pageLength: 10,
+            lengthChange: false
+          });
+        });
+      });
+    </script>
+    {% block extra_js %}{% endblock %}
   </body>
 </html>

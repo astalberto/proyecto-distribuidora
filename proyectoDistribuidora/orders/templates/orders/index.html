@@ -1,15 +1,17 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block title %}Pedidos{% endblock %}
 {% block content %}
 <h2>Pedidos</h2>
 {% if request.user.role == 'STORE_OWNER' %}
-<p><a href="{% url 'crear_pedido' %}">+ Crear Pedido</a></p>
+<div class="page-actions">
+  <a class="btn" href="{% url 'crear_pedido' %}">+ Crear Pedido</a>
+</div>
 {% endif %}
 {% if request.user.role == 'VENDOR' %}
 <p id="polling-status"></p>
 {% endif %}
 
-<table border="1">
+<table id="pedidos-table" class="datatable">
   <thead>
     <tr>
       <th>#</th>
@@ -37,18 +39,29 @@
     {% endfor %}
   </tbody>
 </table>
+{% endblock %}
 
+{% block extra_js %}
 {% if request.user.role == 'VENDOR' %}
 <script>
 // FR-06.6 / US-10: vendor dashboard picks up new pending orders within 30s
-// without a manual page reload.
-(function () {
-  var tbody = document.getElementById('pedidos-tbody');
+// without a manual page reload. Wrapped in $(document).ready so this queues
+// after base.html's DataTable init (registered first) instead of racing it
+// and initializing the table early with un-configured defaults.
+$(function () {
   var status = document.getElementById('polling-status');
+  var table = $('#pedidos-table').DataTable();
   var known = new Set();
-  tbody.querySelectorAll('tr[data-pedido-id]').forEach(function (row) {
-    known.add(row.getAttribute('data-pedido-id'));
+  table.rows().every(function () {
+    var id = $(this.node()).attr('data-pedido-id');
+    if (id) known.add(id);
   });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
 
   function poll() {
     fetch('/api/orders/pending/', { headers: { 'Accept': 'application/json' } })
@@ -58,30 +71,26 @@
         if (nuevos.length === 0) {
           return;
         }
-        var emptyRow = document.getElementById('pedidos-empty-row');
-        if (emptyRow) {
-          emptyRow.remove();
-        }
         nuevos.forEach(function (o) {
           known.add(String(o.id));
-          var row = document.createElement('tr');
-          row.setAttribute('data-pedido-id', o.id);
-          row.innerHTML =
-            '<td>' + o.id + '</td>' +
-            '<td>' + o.store + '</td>' +
-            '<td></td>' +
-            '<td>PENDING</td>' +
-            '<td>' + new Date(o.created_at).toLocaleString() + '</td>' +
-            '<td><a href="' + o.url + '">Ver</a></td>';
-          tbody.prepend(row);
+          var rowApi = table.row.add([
+            o.id,
+            escapeHtml(o.store),
+            '',
+            'PENDING',
+            new Date(o.created_at).toLocaleString(),
+            '<a href="' + escapeHtml(o.url) + '">Ver</a>'
+          ]);
+          $(rowApi.node()).attr('data-pedido-id', o.id);
         });
+        table.draw(false);
         status.textContent = nuevos.length + ' pedido(s) nuevo(s).';
       })
       .catch(function () { /* transient network error — try again next tick */ });
   }
 
   setInterval(poll, 30000);
-})();
+});
 </script>
 {% endif %}
 {% endblock %}
