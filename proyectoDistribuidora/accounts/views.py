@@ -421,7 +421,12 @@ def dashboard(request):
     if status:
         pedidos = pedidos.filter(status=status)
 
-    ordenes_por_estado = pedidos.values('status').annotate(total=Count('id')).order_by('status')
+    ordenes_por_estado = list(
+        pedidos.values('status').annotate(total=Count('id')).order_by('status')
+    )
+    status_labels = dict(OrderStatus.choices)
+    for fila in ordenes_por_estado:
+        fila['status_label'] = status_labels.get(fila['status'], fila['status'])
     pedidos_recientes = pedidos.select_related('store', 'vendor').order_by('-created_at')[:50]
 
     # Average fulfillment time: for a CONFIRMED order, updated_at is exactly

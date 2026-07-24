@@ -59,7 +59,7 @@
   <tbody>
     {% for fila in ordenes_por_estado %}
     <tr>
-      <td>{{ fila.status }}</td>
+      <td>{{ fila.status_label }}</td>
       <td>{{ fila.total }}</td>
     </tr>
     {% empty %}
@@ -85,7 +85,7 @@
       <td><a href="{% url 'ver_pedido' p.id %}">{{ p.id }}</a></td>
       <td>{{ p.store }}</td>
       <td>{{ p.vendor }}</td>
-      <td>{{ p.status }}</td>
+      <td>{{ p.get_status_display }}</td>
       <td>{{ p.created_at|date:"d/m/Y H:i" }}</td>
     </tr>
     {% empty %}

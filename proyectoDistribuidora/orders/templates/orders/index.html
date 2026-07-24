@@ -28,7 +28,7 @@
       <td>{{ p.id }}</td>
       <td>{{ p.store }}</td>
       <td>{{ p.vendor }}</td>
-      <td>{{ p.status }}</td>
+      <td>{{ p.get_status_display }}</td>
       <td>{{ p.created_at|date:"d/m/Y H:i" }}</td>
       <td>
         <a href="{% url 'ver_pedido' p.id %}">Ver</a>
