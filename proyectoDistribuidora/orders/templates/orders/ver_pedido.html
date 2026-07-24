@@ -43,7 +43,7 @@
   {% csrf_token %}
   <button type="submit">Aceptar</button>
 </form>
-<a href="{% url 'rechazar_pedido' pedido.id %}"><button type="button">Rechazar</button></a>
+<a class="btn" style="margin-top:16px" href="{% url 'rechazar_pedido' pedido.id %}">Rechazar</a>
 {% endif %}
 
 {% if request.user.role == 'VENDOR' and pedido.status == 'ACCEPTED' %}
@@ -68,11 +68,11 @@
   {% csrf_token %}
   <button type="submit">Confirmar recepción</button>
 </form>
-<a href="{% url 'reportar_incidencia' pedido.id %}"><button type="button">Reportar problema</button></a>
+<a class="btn" style="margin-top:16px" href="{% url 'reportar_incidencia' pedido.id %}">Reportar problema</a>
 {% endif %}
 
 {% if request.user.role == 'VENDOR' and pedido.status == 'DELIVERY_ISSUE' %}
-<a href="{% url 'resolver_incidencia' pedido.id %}"><button type="button">Resolver incidencia</button></a>
+<a class="btn" style="margin-top:16px" href="{% url 'resolver_incidencia' pedido.id %}">Resolver incidencia</a>
 {% endif %}
 
 <h3>Items del Pedido</h3>
